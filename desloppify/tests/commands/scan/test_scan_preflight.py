@@ -25,6 +25,21 @@ def test_ci_profile_always_passes():
     scan_queue_preflight(args)
 
 
+# ── --rescan sanctioned bypass ──────────────────────────────
+
+
+def test_rescan_bypasses_gate_without_attest():
+    """--rescan is the sanctioned mid-cycle rescan — no attestation needed."""
+    args = SimpleNamespace(profile=None, rescan=True, force_rescan=False)
+    # Must not raise even though a plan load would show a full queue — the
+    # check returns before plan loading entirely.
+    with patch(
+        "desloppify.app.commands.scan.preflight.resolve_plan_load_status",
+        side_effect=AssertionError("plan must not be loaded for --rescan"),
+    ):
+        scan_queue_preflight(args)
+
+
 # ── No plan = no gate ───────────────────────────────────────
 
 

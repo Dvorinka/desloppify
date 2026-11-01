@@ -63,6 +63,20 @@ def scan_queue_preflight(args: object) -> None:
     if getattr(args, "profile", None) == "ci":
         return
 
+    # --rescan is the sanctioned mid-cycle rescan: it refreshes findings while
+    # mid-cycle plan reconciliation preserves issue IDs, queue state, and the
+    # plan baseline — so no attestation is required.
+    if getattr(args, "rescan", False):
+        print(
+            colorize(
+                "  --rescan: refreshing findings; queue state and plan "
+                "baseline are preserved.",
+                "dim",
+            )
+        )
+        _log_preflight(None, "allowed", "sanctioned --rescan", 0)
+        return
+
     # --force-rescan with valid attestation bypasses
     if getattr(args, "force_rescan", False):
         attest = getattr(args, "attest", None) or ""
@@ -154,6 +168,8 @@ def scan_queue_preflight(args: object) -> None:
         " remaining in your queue.\n"
         "  Scanning mid-cycle regenerates issue IDs and breaks triage state.\n"
         "  Work through items with `desloppify next`, then scan when clear.\n\n"
+        "  To refresh findings without losing queue state:\n"
+        "    desloppify scan --rescan\n\n"
         "  To force a rescan (resets your plan-start score):\n"
         '    desloppify scan --force-rescan --attest "I understand this is not '
         "the intended workflow and I am intentionally skipping queue "

@@ -106,6 +106,14 @@ examples:
         help="Language runtime option override (repeatable, e.g. --lang-opt roslyn_cmd='dotnet run ...')",
     )
     p_scan.add_argument(
+        "--rescan",
+        action="store_true",
+        help=(
+            "Sanctioned mid-cycle rescan: refresh findings while preserving "
+            "issue IDs, queue state, and the plan baseline. No --attest needed."
+        ),
+    )
+    p_scan.add_argument(
         "--force-rescan",
         action="store_true",
         help="Bypass queue completion check (requires --attest)",

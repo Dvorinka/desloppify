@@ -80,6 +80,8 @@ desloppify plan skip <pat>              # defer — hide from next
 ### Phase 3: Execute — grind the queue to completion
 
 Trust the plan and execute. Don't rescan mid-queue — finish the queue first.
+If you must verify a fix mid-cycle, use `desloppify scan --rescan` — it refreshes
+findings while preserving issue IDs, queue state, and the plan baseline.
 
 **Branch first.** Create a dedicated branch — never commit health work directly to main:
 ```bash
