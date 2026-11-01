@@ -47,7 +47,10 @@ def test_coverage_open_ids_falls_back_to_queue_order_before_first_scan() -> None
     }
 
 
-def test_empty_frozen_scope_does_not_expand_to_new_live_review_issues() -> None:
+def test_empty_frozen_scope_means_unfrozen_coverage() -> None:
+    """An empty active_triage_issue_ids sentinel means "no freeze" for
+    coverage (upstream #841) — reflect requires every live review issue —
+    while the frozen list itself still reads empty for cluster scoping."""
     plan = {"epic_triage_meta": {"active_triage_issue_ids": []}}
     state = {
         "last_scan": "2026-08-25T00:00:00Z",
@@ -56,7 +59,7 @@ def test_empty_frozen_scope_does_not_expand_to_new_live_review_issues() -> None:
         },
     }
 
-    assert snapshot_mod.coverage_open_ids(plan, state) == set()
+    assert snapshot_mod.coverage_open_ids(plan, state) == {"review::new"}
     assert snapshot_mod.active_triage_issue_ids(plan, state) == set()
 
 
