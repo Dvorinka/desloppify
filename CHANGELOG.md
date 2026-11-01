@@ -72,6 +72,26 @@ Upstream issue/PR triage lives in [PORTS.md](PORTS.md).
 - Implicit mixin contract detector resolves `self.<method>()` through own
   and inherited methods instead of reporting them as undeclared host
   attributes (upstream #847).
+- TypeScript coverage resolver now shares the dep graph's candidate
+  enumeration: NodeNext `./x.js` specifiers resolve to `.ts`/`.tsx`
+  sources, and `~/` joins `@/` in the tsconfig-paths fallback
+  (declared mappings win) — direct imports that both resolvers missed
+  no longer report transitive_only/untested (upstream #858).
+- Python coverage maps scan-root-relative imports from tests outside the
+  scanned root (unambiguous suffix match), `importlib` file-load paths
+  (`spec_from_file_location`, `SourceFileLoader`, `imp.load_source`)
+  count as test imports, `*_selftest.py` files classify as tests with an
+  `X_selftest.py -> X.py` naming convention, and executable in-file
+  `--selftest` entry points count as coverage when wired to `__main__`
+  (upstream #907, #905, #771, #758).
+- Coverage graph/path normalization unifies `\\` to `/` so Windows
+  graph keys match zone paths; the coverage phase labels its
+  sqrt(LOC)-weighted potential honestly (upstream #907).
+- Python `dict_keys` no longer flags `self.x` dicts consumed by sibling
+  methods, dicts that escaped through call boundaries or were rebound to
+  unseen content (phantom reads), conditional/branch writes (sequential
+  overwrite claims now require two unconditional writes), or dicts moved
+  through for-iter container aliases (upstream #801, #846).
 
 ### Changed
 

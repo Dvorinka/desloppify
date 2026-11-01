@@ -21,20 +21,31 @@ Committed+pushable on maint/continuation (push pending):
 - #786 log_sensitive payload-aware + schema-validated json_parse. 1c91976d.
 - #709 next_lint→eslint on next>=16 (cmd_resolver). d8267ca0 (pushed).
 
-## Remaining PORT rows (as of this handoff)
-- #858 TS coverage transitive_only for rendered components — needs
-  integration-level investigation (imports resolve standalone).
-- Python: #907 external-test import roots, #905 importlib hyphenated CLIs,
-  #846/#801 dict_keys FPs, #814 runpy.run_path coverage, #771 *_selftest
-  mapping tail, #758 in-file selftests.
-- TRACK (61): deep queue/plan machinery bugs — untouched.
+## Session 2026-11-01 (III) — detector queue DRAINED
+Committed on maint/continuation:
+- #858 TS resolver parity: `~/` joins `@/` in tsconfig fallback (declared
+  wins); resolve_import_spec shares iter_resolve_candidates (.js stems).
+  memo-ri repro unrecoverable (repo deleted) — proven via synthetic repro.
+  9c7767fe.
+- #907 py scan-root import mapping (unambiguous suffix match) + windows
+  \\ -> / graph normalization + coverage potential label. a5d9059b.
+- #905 importlib file-load paths (spec_from_file_location,
+  SourceFileLoader, load_source) count as test imports. a8e83d7a.
+- #801/#846 dict_keys provenance: self.x -> class scope analysis, escape
+  + nonliteral rebinding -> provenance_unknown (no phantom), conditional
+  writes need 2 unconditional for overwritten_key, for-iter escapes.
+  06425626.
+- #771 *_selftest.py Zone.TEST + X_selftest->X.py naming. 1798e943.
+- #758 has_inline_tests: selftest fn + __main__/argv wiring = coverage.
+  3a1125af.
+
+## Remaining PORT rows
+- TRACK (61): deep queue/plan machinery bugs — untouched by design.
 
 ## Immediate next work
-1. **W2 — desloppify-as-PR-reviewer** (owner workstream): `desloppify review`
-   mode that comments mechanical findings on a PR diff + gates on strict-score
-   regression vs base; reusable GitHub Action `action.yml` + example workflow.
-   Check for existing --diff/review machinery before building.
-2. Remaining PORT rows above; then CHANGELOG/PORTS finalize + push + PR update.
+1. Push maint/continuation; refresh PR #1 body with final delta.
+2. TRACK queue when owner wants machinery work.
+3. CHANGELOG is current; PORTS all rows resolved to DONE/SKIP/TRACK.
 
 ## Learned pitfalls
 - `desloppify/data/global/SKILL.md` must equal `docs/SKILL.md` (bundled-sync test).
