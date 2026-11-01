@@ -162,7 +162,7 @@ class TestDenoFallback:
             "--project",
             str(tsconfig),
             "--noEmit",
-            ]
+        ]
         assert recorded["cwd"] == tmp_path
         assert recorded["timeout"] == 120
 
@@ -172,7 +172,9 @@ class TestDenoFallback:
         with pytest.raises(OSError, match="TypeScript compiler not found"):
             ts_unused_mod._run_tsc_unused_check(tmp_path, tmp_path / "tsconfig.json")
 
-    def test_detect_unused_uses_deno_fallback_for_url_imports(self, tmp_path, monkeypatch):
+    def test_detect_unused_uses_deno_fallback_for_url_imports(
+        self, tmp_path, monkeypatch
+    ):
         """Deno-style URL imports should bypass tsc and use source-based fallback."""
         _write(
             tmp_path,
@@ -229,9 +231,7 @@ class TestDenoFallback:
         _write(tmp_path, "src/app.ts", "const x = 1;\n")
 
         class _Result:
-            stdout = (
-                "src/app.ts(1,7): error TS6133: 'x' is declared but its value is never read.\n"
-            )
+            stdout = "src/app.ts(1,7): error TS6133: 'x' is declared but its value is never read.\n"
             stderr = ""
 
         calls = {"count": 0}
@@ -251,6 +251,43 @@ class TestDenoFallback:
         assert total == 1
         assert entries and entries[0]["name"] == "x"
 
+    def test_detect_unused_uses_nearest_project_tsconfig(self, tmp_path, monkeypatch):
+        """A monorepo subproject scan should not compile the root project config."""
+        api_path = tmp_path / "services" / "api"
+        _write(tmp_path, "tsconfig.json", '{"files": []}\n')
+        _write(api_path, "tsconfig.json", '{"include": ["src/**/*.ts"]}\n')
+        _write(api_path, "src/app.ts", "const x = 1;\n")
+        recorded: dict[str, object] = {}
+
+        class _Result:
+            stdout = ""
+            stderr = ""
+
+        def _fake_run(*args, **kwargs):
+            tsconfig_path = Path(args[0][3])
+            recorded["path"] = tsconfig_path
+            recorded["config"] = json.loads(tsconfig_path.read_text())
+            return _Result()
+
+        monkeypatch.setattr(
+            ts_unused_mod.shutil,
+            "which",
+            lambda name: "/opt/homebrew/bin/npx" if name == "npx" else None,
+        )
+        monkeypatch.setattr(ts_unused_mod._proc_runtime, "run", _fake_run)
+
+        detect_unused(api_path)
+
+        assert recorded["path"] == api_path / "tsconfig.desloppify.json"
+        assert recorded["config"] == {
+            "extends": "./tsconfig.json",
+            "compilerOptions": {
+                "noUnusedLocals": True,
+                "noUnusedParameters": True,
+            },
+        }
+        assert not (api_path / "tsconfig.desloppify.json").exists()
+
     def test_detect_unused_root_deno_lock_does_not_force_fallback(
         self, tmp_path, monkeypatch
     ):
@@ -260,9 +297,7 @@ class TestDenoFallback:
         _write(tmp_path, "src/app.ts", "const x = 1;\n")
 
         class _Result:
-            stdout = (
-                "src/app.ts(1,7): error TS6133: 'x' is declared but its value is never read.\n"
-            )
+            stdout = "src/app.ts(1,7): error TS6133: 'x' is declared but its value is never read.\n"
             stderr = ""
 
         calls = {"count": 0}

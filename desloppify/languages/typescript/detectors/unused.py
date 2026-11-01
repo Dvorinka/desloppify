@@ -108,6 +108,7 @@ def detect_unused(path: Path, category: str = "all") -> tuple[list[dict], int]:
     if base_tsconfig is None:
         return _detect_unused_fallback(path, category)
 
+    project_root = get_project_root()
     tmp_tsconfig = {
         "extends": f"./{base_tsconfig.name}",
         "compilerOptions": {
@@ -119,7 +120,7 @@ def detect_unused(path: Path, category: str = "all") -> tuple[list[dict], int]:
     try:
         safe_write_text(tmp_path, json.dumps(tmp_tsconfig, indent=2))
         try:
-            result = _run_tsc_unused_check(get_project_root(), tmp_path)
+            result = _run_tsc_unused_check(project_root, tmp_path)
         except (_proc_runtime.SubprocessError, OSError) as exc:
             logger.debug("Falling back to source-based unused detection: %s", exc)
             return _detect_unused_fallback(path, category)
@@ -170,11 +171,19 @@ def detect_unused(path: Path, category: str = "all") -> tuple[list[dict], int]:
 
 def _categorize_unused(filepath: str, lineno: int) -> str:
     try:
-        p = Path(filepath) if Path(filepath).is_absolute() else get_project_root() / filepath
+        p = (
+            Path(filepath)
+            if Path(filepath).is_absolute()
+            else get_project_root() / filepath
+        )
         lines = p.read_text().splitlines()
         if lineno <= len(lines):
             src_line = lines[lineno - 1].strip()
-            if src_line.startswith("import ") or "from '" in src_line or 'from "' in src_line:
+            if (
+                src_line.startswith("import ")
+                or "from '" in src_line
+                or 'from "' in src_line
+            ):
                 return "imports"
             if src_line.startswith(
                 (
@@ -197,7 +206,9 @@ def _categorize_unused(filepath: str, lineno: int) -> str:
                 if prev.startswith("import "):
                     return "imports"
                 if not prev or (
-                    not prev.startswith("{") and not prev.startswith(",") and "," not in prev
+                    not prev.startswith("{")
+                    and not prev.startswith(",")
+                    and "," not in prev
                 ):
                     break
     except (OSError, UnicodeDecodeError) as exc:
@@ -217,7 +228,9 @@ def cmd_unused(args: argparse.Namespace) -> None:
             file=sys.stderr,
         )
     else:
-        print(colorize("Running tsc... (this may take a moment)", "dim"), file=sys.stderr)
+        print(
+            colorize("Running tsc... (this may take a moment)", "dim"), file=sys.stderr
+        )
 
     entries, _ = detect_unused(path, args.category)
     if args.json:
