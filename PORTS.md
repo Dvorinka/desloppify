@@ -171,9 +171,9 @@ against fork HEAD `3a7735d` (v1.0). Verdicts:
 | #844 scan isolation + review workflow consistency | TRACK | umbrella — review before porting |
 | #841 frozen review scope in triage collection | TRACK | |
 | #840 fully covered selected-dimension reviews | TRACK | |
-| #837 review state + detector verification scope | TRACK | |
-| #836 deliberate skip dispositions across scans | TRACK | |
-| #835 queue targets + scope plans to state files | TRACK | |
+| #837 review state + detector verification scope | DONE | upstream PR #837 port |
+| #836 deliberate skip dispositions across scans | DONE | da6ce101 — upstream PR #836 port |
+| #835 queue targets + scope plans to state files | DONE | upstream PR #835 port |
 | #802 exact issue ID precedence over prefix | DONE | |
 | #762 config excludes in bandit + module-installed bandit | DONE | |
 | #750 count CommonJS require() as import edge | DONE | superseded by ported #874+#920 |
