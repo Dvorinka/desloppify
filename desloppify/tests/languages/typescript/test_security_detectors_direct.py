@@ -136,6 +136,77 @@ def test_line_checks_report_expected_security_kinds() -> None:
     )
     assert {"dangerously_set_inner_html", "innerHTML_assignment"} <= _kinds(html_issues)
 
+    # Safe innerHTML/dangerouslySetInnerHTML uses must not flag.
+    safe_cases = [
+        (["const el = row; el.innerHTML = ''"], "el.innerHTML = ''"),
+        (
+            ["const x = <div dangerouslySetInnerHTML={{ __html: '' }} />"],
+            "const x = <div dangerouslySetInnerHTML={{ __html: '' }} />",
+        ),
+        (
+            ["const x = <div dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(raw) }} />"],
+            "const x = <div dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(raw) }} />",
+        ),
+        (
+            [
+                "const ICON = `<svg><path d='M0 0h24v24H0z'/></svg>`;",
+                "const x = <div dangerouslySetInnerHTML={{ __html: ICON }} />",
+            ],
+            "const x = <div dangerouslySetInnerHTML={{ __html: ICON }} />",
+        ),
+        (
+            ["// el.innerHTML = payload.html"],
+            "// el.innerHTML = payload.html",
+        ),
+        (
+            ["el.innerHTML = sanitizeHtml(input)"],
+            "el.innerHTML = sanitizeHtml(input)",
+        ),
+    ]
+    for lines, line in safe_cases:
+        safe_issues = line_checks_mod._line_security_issues(
+            filepath="src/dom.ts",
+            normalized_path="/src/dom.ts",
+            lines=lines,
+            line_num=1,
+            line=line,
+            is_server_only=False,
+            has_dev_guard=False,
+        )
+        kinds = _kinds(safe_issues)
+        assert "dangerously_set_inner_html" not in kinds, line
+        assert "innerHTML_assignment" not in kinds, line
+
+    # Interpolated markup and untrusted operands still flag.
+    unsafe_cases = [
+        (
+            [
+                "const TPL = `<div>${userHtml}</div>`;",
+                "const x = <div dangerouslySetInnerHTML={{ __html: TPL }} />",
+            ],
+            "const x = <div dangerouslySetInnerHTML={{ __html: TPL }} />",
+        ),
+        (
+            ["const x = <div dangerouslySetInnerHTML={{ __html: props.html }} />"],
+            "const x = <div dangerouslySetInnerHTML={{ __html: props.html }} />",
+        ),
+        (
+            ["el.innerHTML = row.html"],
+            "el.innerHTML = row.html",
+        ),
+    ]
+    for lines, line in unsafe_cases:
+        unsafe_issues = line_checks_mod._line_security_issues(
+            filepath="src/dom.ts",
+            normalized_path="/src/dom.ts",
+            lines=lines,
+            line_num=1,
+            line=line,
+            is_server_only=False,
+            has_dev_guard=False,
+        )
+        assert _kinds(unsafe_issues), line
+
     dev_cred_line = "const token = import.meta.env.VITE_API_TOKEN"
     dev_cred_issues = line_checks_mod._line_security_issues(
         filepath="src/app.ts",
