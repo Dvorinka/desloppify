@@ -43,7 +43,7 @@ against fork HEAD `3a7735d` (v1.0). Verdicts:
 | #893 C# inferred property receivers → transitive_only | PORT | csharp detector |
 | #892 C# custom test runners → no_tests | PORT | |
 | #888 triage step-count / queue deadlock | TRACK | |
-| #887 Go scanner invokes removed golangci-lint v1 flag | PORT | Go toolchain drift — check `golangci-lint run --out-format` compat |
+| #887 Go scanner invokes removed golangci-lint v1 flag | DONE | cmd_fn picks v2 flag by installed major |
 | #886 Windows Codex batch quoting/locale | SKIP | |
 | #885 C# field names flagged as secrets | DONE (class) | covered by value-based secret gate (fix b) |
 | #884 clarify defer disposition in triage prompts | TRACK | prompt copy |
@@ -117,9 +117,9 @@ against fork HEAD `3a7735d` (v1.0). Verdicts:
 | #674 plan skip exits 0 on zero-match | TRACK | (closed PR #706 exists) |
 | #665 importer_count misses @/ aliases | DONE | ported #924+#925 — per-importer tsconfig |
 | #664 Python scan parses excluded virtualenv in coupling | DONE | same fix as #915 — exclusion-aware finder |
-| #643 Go flat-dir counts _test.go as production | PORT | go detector |
-| #642 Go coverage misses same-package behavior tests | PORT | |
-| #641 Go signature-variance conflates receiver types | PORT | |
+| #643 Go flat-dir counts _test.go as production | DONE | flat_dirs_filter excludes *_test.go |
+| #642 Go coverage misses same-package behavior tests | DONE | already fixed — map_test_to_sources (3bac86a3) |
+| #641 Go signature-variance conflates receiver types | DONE | methods extract as pkg.Recv.Name |
 | #640 Go unused-import assumes last path segment | DONE | ported upstream PR #703 (fix a) |
 | #563 (closed) mid-cycle scan blocked behind attest ceremony | DONE | `scan --rescan` added (fix f) |
 | #544 (closed) hardcoded_secret_name ignores value | DONE | value-based gate (fix b) |
