@@ -78,6 +78,23 @@ def cmd_plan_resolve(args: argparse.Namespace) -> None:
     except PLAN_LOAD_EXCEPTIONS:
         plan = None
 
+    resolve_args = argparse.Namespace(
+        status="fixed",
+        patterns=patterns,
+        note=note,
+        attest=attestation,
+        confirm_batch_wontfix=False,
+        force_resolve=bool(getattr(args, "force_resolve", False)),
+        state=getattr(args, "state", None),
+        lang=getattr(args, "lang", None),
+        path=getattr(args, "path", None),
+        exclude=getattr(args, "exclude", None),
+    )
+
+    # A guard rejection raises CommandError — the done log entry must not
+    # be written for a resolution that did not land (#922).
+    cmd_resolve(resolve_args)
+
     try:
         if plan is None:
             plan = load_plan()
@@ -95,21 +112,6 @@ def cmd_plan_resolve(args: argparse.Namespace) -> None:
     except PLAN_LOAD_EXCEPTIONS as exc:
         log_best_effort_failure(logger, "append plan resolve log entry", exc)
         print(colorize(f"  Note: unable to append plan resolve log entry ({exc}).", "dim"))
-
-    resolve_args = argparse.Namespace(
-        status="fixed",
-        patterns=patterns,
-        note=note,
-        attest=attestation,
-        confirm_batch_wontfix=False,
-        force_resolve=bool(getattr(args, "force_resolve", False)),
-        state=getattr(args, "state", None),
-        lang=getattr(args, "lang", None),
-        path=getattr(args, "path", None),
-        exclude=getattr(args, "exclude", None),
-    )
-
-    cmd_resolve(resolve_args)
 
 
 __all__ = ["cmd_plan_resolve"]

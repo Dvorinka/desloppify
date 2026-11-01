@@ -14,6 +14,7 @@ from desloppify.app.commands.helpers.lang import resolve_lang
 from desloppify.app.commands.helpers.state_persistence import save_state_or_exit
 from desloppify.app.commands.helpers.queue_progress import show_score_with_plan_context
 from desloppify.app.commands.helpers.state import state_path
+from desloppify.base.exception_sets import CommandError
 from desloppify.base.output.terminal import colorize
 from desloppify.engine._state.resolution import coerce_assessment_score
 from desloppify.state_io import load_state
@@ -69,7 +70,7 @@ def _load_state_with_guards(
             args.status,
             plan_access=plan_access,
         ):
-            return None
+            raise CommandError("Queue order guard rejected resolve.", exit_code=1)
 
     if args.status == "fixed":
         require_triage_current_or_exit(

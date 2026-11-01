@@ -1075,3 +1075,28 @@ def test_plan_skip_zero_match_exits_nonzero(monkeypatch) -> None:
                 attest=None, confirm=False, strict=False,
             ))
         assert exc.value.exit_code == 1
+
+
+def test_plan_resolve_guard_reject_exits_nonzero(monkeypatch) -> None:
+    """#922: queue-order guard rejection must exit 1, not silently succeed."""
+    import argparse
+    import desloppify.app.commands.resolve.cmd as resolve_mod
+    from desloppify.base.exception_sets import CommandError
+    import pytest
+
+    monkeypatch.setattr(resolve_mod, "_validate_resolve_inputs", lambda *a, **k: None)
+    monkeypatch.setattr(resolve_mod, "state_path", lambda _a: "/tmp/s.json")
+    monkeypatch.setattr(resolve_mod, "load_state", lambda _p: {})
+    monkeypatch.setattr(
+        resolve_mod, "load_resolve_plan_access",
+        lambda: type("P", (), {"plan": {}, "degraded": True})(),
+    )
+    monkeypatch.setattr(resolve_mod, "_check_queue_order_guard", lambda *a, **k: True)
+
+    args = argparse.Namespace(
+        patterns=["b"], status="fixed", note="x" * 60,
+        attest="y", force_resolve=False, confirm_batch_wontfix=False,
+    )
+    with pytest.raises(CommandError) as exc:
+        resolve_mod.cmd_resolve(args)
+    assert exc.value.exit_code == 1
