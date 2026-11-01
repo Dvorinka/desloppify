@@ -160,6 +160,20 @@ def test_detect_sort_no_comparator(tmp_path):
     assert "sort_no_comparator" in ids
 
 
+def test_sort_no_comparator_skips_string_key_sources(tmp_path):
+    """Object.keys/entries return string-keyed rows — bare .sort() is canonical."""
+
+    _write(
+        tmp_path,
+        "ok.ts",
+        "const canon = Object.keys(raw).sort().map(k => [k, raw[k]]);\n"
+        "const ents = Object.entries(row).sort();\n",
+    )
+    entries, _ = detect_smells(tmp_path)
+    ids = {e["id"] for e in entries}
+    assert "sort_no_comparator" not in ids
+
+
 def test_detect_debug_tag(tmp_path):
     """Detects vestigial debug tags like '[DEBUG_TAG] message'."""
 
