@@ -46,6 +46,8 @@ BARREL_BASENAMES: set[str] = set()
 
 # Common source layout prefixes for src-layout projects (PEP 621).
 _SRC_PREFIXES = ("src/",)
+_RUNPY_PATH_RE = re.compile(r"runpy\.run_path\s*\(([^\n]*)")
+_PY_FILE_STR_RE = re.compile(r"[\"']([^\"']+\.py)[\"']")
 
 
 def has_testable_logic(filepath: str, content: str) -> bool:
@@ -58,7 +60,24 @@ def resolve_import_spec(
     spec: str, test_path: str, production_files: set[str]
 ) -> str | None:
     """Best-effort module-spec to source-file resolution for direct imports."""
-    module_path = spec.strip().replace(".", "/")
+    spec = spec.strip().strip("\"'")
+    # File-path specs (runpy.run_path & friends, #814): resolve by sibling
+    # path or basename match, not as a dotted module.
+    if spec.endswith(".py"):
+        if "/" not in spec:
+            for prod in production_files:
+                if prod.replace("\\", "/").rsplit("/", 1)[-1] == spec:
+                    return prod
+        for prod in production_files:
+            normalized = prod.replace("\\", "/")
+            if normalized.endswith(f"/{spec}") or normalized == spec:
+                return prod
+        if test_path:
+            sibling = os.path.join(os.path.dirname(test_path), spec)
+            if sibling in production_files:
+                return sibling
+        return None
+    module_path = spec.replace(".", "/")
     if not module_path or module_path.startswith("/"):
         return None
 
@@ -105,6 +124,9 @@ def parse_test_import_specs(content: str) -> list[str]:
             specs.append(package)
             if imported_name:
                 specs.append(f"{package}.{imported_name}")
+    # runpy.run_path(...) targets are file paths, not module specs (#814).
+    for m in _RUNPY_PATH_RE.finditer(content):
+        specs.extend(_PY_FILE_STR_RE.findall(m.group(1)))
     return specs
 
 
