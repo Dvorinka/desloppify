@@ -964,6 +964,13 @@ class TestCollectExcludeDirs:
         assert str(tmp_path / ".cache") in result
         assert all(Path(path).is_absolute() for path in result)
 
+    def test_resolves_relative_scan_root(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        result = collect_exclude_dirs(Path("."), extra_exclusions=(".tools", ".local"))
+        assert all(Path(path).is_absolute() for path in result)
+        assert str(tmp_path / ".tools") in result
+        assert str(tmp_path / ".local") in result
+
     def test_returns_absolute_paths(self, tmp_path):
         with patch(
             "desloppify.base.discovery.source.get_exclusions", return_value=()
