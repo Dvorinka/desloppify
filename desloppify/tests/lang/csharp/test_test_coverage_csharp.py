@@ -90,3 +90,32 @@ def test_external_static_import_does_not_match_local_filename(tmp_path):
     local.write_text("namespace Demo.Tools;\nclass Math {}")
 
     assert import_based_mapping({}, {str(test)}, {str(local)}, "csharp") == set()
+
+
+def test_analyze_test_quality_custom_harness_is_unknown_not_no_tests(tmp_path):
+    """#892: a scenario file calling a custom Check.That helper must not be
+    reported as confidently having no tests."""
+    test_file = tmp_path / "CounterScenarios.cs"
+    test_file.write_text(
+        "namespace Sample.Tests;\n"
+        "public static class CounterScenarios {\n"
+        "    public static void AddsPositiveAmounts() {\n"
+        "        var counter = new Counter();\n"
+        "        counter.Add(2);\n"
+        '        Check.That(counter.Value == 2, "amount is retained");\n'
+        "        counter.Add(3);\n"
+        '        Check.That(counter.Value == 5, "amounts accumulate");\n'
+        "    }\n"
+        "}\n"
+    )
+    result = analyze_test_quality({str(test_file)}, "csharp")
+    assert result[str(test_file)]["assertions"] == 2
+    assert result[str(test_file)]["test_functions"] == 0
+    assert result[str(test_file)]["quality"] == "unknown"
+
+
+def test_analyze_test_quality_truly_empty_file_stays_no_tests(tmp_path):
+    test_file = tmp_path / "Empty.cs"
+    test_file.write_text("namespace Sample.Tests;\npublic static class Empty {}\n")
+    result = analyze_test_quality({str(test_file)}, "csharp")
+    assert result[str(test_file)]["quality"] == "no_tests"

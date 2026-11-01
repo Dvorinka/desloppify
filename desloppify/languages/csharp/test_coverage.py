@@ -22,6 +22,9 @@ ASSERT_PATTERNS = [
         r"\bAssert\.\w+\(",
         r"\bShould\(\)\.\w+\(",
         r"\bFluentAssertions\b",
+        # Custom BDD-style helpers — Check.That(...), Verify.That(...) (#892).
+        r"\b\w+\.That\(",
+        r"\bExpect\(",
     ]
 ]
 MOCK_PATTERNS = [
@@ -59,7 +62,7 @@ def resolve_import_spec(
 
     for candidate in production_files:
         namespace, _usings, _is_entrypoint = parse_file_metadata(candidate)
-        declared_types, _identifiers, _extensions = parse_file_symbols(candidate)
+        declared_types, _identifiers, _extensions, _qualified = parse_file_symbols(candidate)
         prefix = f"{namespace}." if namespace else ""
         if any(spec == prefix + name for name in declared_types):
             return candidate

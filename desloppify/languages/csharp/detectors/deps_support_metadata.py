@@ -34,6 +34,7 @@ _EXTENSION_METHOD_RE = re.compile(
     r"\b([A-Za-z_]\w*)\s*(?:<[^{}();]+>)?\s*\(\s*this\b"
 )
 _IDENTIFIER_RE = re.compile(r"\b[A-Za-z_]\w*\b")
+_QUALIFIED_REF_RE = re.compile(r"\b(?:[A-Z]\w*\.)+[A-Z]\w*\b")
 _MAIN_METHOD_RE = re.compile(r"(?m)\bstatic\s+(?:async\s+)?(?:void|int)\s+Main\s*\(")
 _MAUI_APP_FACTORY_RE = re.compile(r"(?m)\bCreateMauiApp\s*\(")
 _PLATFORM_BASE_RE = re.compile(
@@ -102,17 +103,19 @@ def parse_file_metadata(filepath: str) -> tuple[str | None, set[str], bool]:
     return namespace, usings, is_entrypoint_file(abs_path, content)
 
 
-def parse_file_symbols(filepath: str) -> tuple[set[str], set[str], set[str]]:
-    """Return declared types, reference identifiers and extension method names.
+def parse_file_symbols(filepath: str) -> tuple[set[str], set[str], set[str], set[str]]:
+    """Return declared types, reference identifiers, extension method names
+    and PascalCase qualified references (``Ns.Type`` or longer).
 
-    Namespace directives make names available, but do not themselves reference
-    types with the same name as a namespace segment. This remains lexical rather
-    than full symbol binding.
+    Qualified references capture fully-qualified type usage that needs no
+    ``using`` — e.g. ``Foo.Bar.Baz.Create()`` — which the dependency graph
+    otherwise cannot see (#683). This remains lexical rather than full
+    symbol binding.
     """
     try:
         content = Path(resolve_path(filepath)).read_text()
     except (OSError, UnicodeDecodeError):
-        return set(), set(), set()
+        return set(), set(), set(), set()
     code = _NON_CODE_RE.sub(" ", content)
     references = _NAMESPACE_RE.sub(" ", code)
     for pattern in (_USING_RE, _USING_ALIAS_RE, _USING_STATIC_RE):
@@ -121,7 +124,57 @@ def parse_file_symbols(filepath: str) -> tuple[set[str], set[str], set[str]]:
         set(_TYPE_DECLARATION_RE.findall(code)),
         set(_IDENTIFIER_RE.findall(references)),
         set(_EXTENSION_METHOD_RE.findall(code)),
+        set(_QUALIFIED_REF_RE.findall(references)),
     )
+
+
+_MEMBER_DECL_RE = re.compile(
+    r"\b(?:public|internal|protected|private)\s+"
+    r"(?:(?:static|readonly|sealed|virtual|override|new|required|abstract)\s+)*"
+    r"([A-Z]\w*)\s+([A-Za-z_]\w*)\s*(?:\{|=|;)"
+)
+_VAR_NEW_RE = re.compile(
+    r"\b(?:var\s+([A-Za-z_]\w*)\s*=|([A-Z]\w*)\s+([A-Za-z_]\w*)\s*=)\s*new\s+([A-Z]\w*)"
+)
+
+
+def parse_member_bindings(
+    filepath: str,
+) -> tuple[dict[str, set[str]], dict[str, str], dict[str, set[str]]]:
+    """Return (member_types, var_types, member_accesses) for receiver binding.
+
+    ``member_types`` maps a declared member name to the type names it returns
+    (``public Inventory Items { get; }`` -> ``{"Items": {"Inventory"}}``).
+    ``var_types`` maps a local to its constructed type (``var s = new Store()``
+    or ``Store s = new()``).  ``member_accesses`` maps such a local to the
+    member names touched on it (``store.Items.Add(...)`` -> ``{"Items"}``).
+
+    Together they bind ``store.Items.Add`` to ``Inventory`` — a direct type
+    dependency the identifier-level fallback cannot see (#893).  Lexical,
+    not semantic: name collisions resolve to more candidate targets, never
+    fewer.
+    """
+    try:
+        content = Path(resolve_path(filepath)).read_text()
+    except (OSError, UnicodeDecodeError):
+        return {}, {}, {}
+    code = _NON_CODE_RE.sub(" ", content)
+
+    member_types: dict[str, set[str]] = {}
+    for type_name, member_name in _MEMBER_DECL_RE.findall(code):
+        member_types.setdefault(member_name, set()).add(type_name)
+
+    var_types: dict[str, str] = {}
+    for var_name, _decl_type, explicit_var, new_type in _VAR_NEW_RE.findall(code):
+        var_types[var_name or explicit_var] = new_type
+
+    member_accesses: dict[str, set[str]] = {}
+    for var_name in var_types:
+        member_accesses[var_name] = set(
+            re.findall(rf"\b{re.escape(var_name)}\.([A-Za-z_]\w*)\b", code)
+        )
+
+    return member_types, var_types, member_accesses
 
 
 def expand_namespace_matches(

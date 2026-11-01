@@ -601,3 +601,107 @@ def test_build_dep_graph_heuristic_matches_roslyn_multi_project(monkeypatch):
     assert _edge_set_within_root(heuristic_graph, root) == _edge_set_within_root(
         roslyn_graph, root
     )
+
+
+def test_build_dep_graph_resolves_fully_qualified_references(tmp_path):
+    """#683: FQ type references need no using and must still create edges."""
+    commands = tmp_path / "Commands"
+    commands.mkdir()
+    program = tmp_path / "Program.cs"
+    vocab = commands / "VocabCommand.cs"
+    unused = commands / "Unused.cs"
+    program.write_text(
+        "namespace Demo.Cli;\n"
+        "class Program {\n"
+        "    static void Main() {\n"
+        "        Demo.Cli.Commands.VocabCommand.Create();\n"
+        "    }\n"
+        "}\n"
+    )
+    vocab.write_text("namespace Demo.Cli.Commands;\nclass VocabCommand {}\n")
+    unused.write_text("namespace Demo.Cli.Commands;\nclass Unused {}\n")
+
+    graph = build_dep_graph(tmp_path)
+
+    assert str(vocab) in graph[str(program)]["imports"]
+    assert str(program) in graph[str(vocab)]["importers"]
+    assert str(unused) not in graph[str(program)]["imports"]
+    assert graph[str(unused)]["importer_count"] == 0
+
+
+def test_build_dep_graph_qualified_ref_respects_project_boundaries(tmp_path):
+    """Qualified refs into unreferenced projects must not create edges."""
+    app_dir = tmp_path / "app"
+    lib_dir = tmp_path / "lib"
+    app_dir.mkdir()
+    lib_dir.mkdir()
+    (app_dir / "app.csproj").write_text(
+        '<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup>'
+        "<RootNamespace>Demo.App</RootNamespace></PropertyGroup></Project>"
+    )
+    (lib_dir / "lib.csproj").write_text(
+        '<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup>'
+        "<RootNamespace>Demo.Lib</RootNamespace></PropertyGroup></Project>"
+    )
+    program = app_dir / "Program.cs"
+    program.write_text(
+        "namespace Demo.App;\n"
+        "class Program {\n"
+        "    static void Main() {\n"
+        "        Demo.Lib.Service.Run();\n"
+        "    }\n"
+        "}\n"
+    )
+    service = lib_dir / "Service.cs"
+    service.write_text("namespace Demo.Lib;\nclass Service {}\n")
+
+    graph = build_dep_graph(tmp_path)
+
+    assert str(service) not in graph[str(program)]["imports"]
+    assert graph[str(service)]["importer_count"] == 0
+
+
+def test_build_dep_graph_binds_inferred_property_receivers(tmp_path):
+    """#893: `store.Items.Add()` binds the member's declared type directly."""
+    src = tmp_path / "src"
+    tests = tmp_path / "tests"
+    src.mkdir()
+    tests.mkdir()
+    (src / "Store.cs").write_text(
+        "namespace Sample;\n"
+        "public sealed class Store {\n"
+        "    public Inventory Items { get; } = new();\n"
+        "    public void Restock(int amount) { Items.Add(amount); }\n"
+        "}\n"
+    )
+    (src / "Inventory.cs").write_text(
+        "namespace Sample;\n"
+        "public sealed class Inventory {\n"
+        "    public void Add(int amount) {}\n"
+        "    public bool Take(int amount) => true;\n"
+        "}\n"
+    )
+    (src / "UnusedSibling.cs").write_text(
+        "namespace Sample;\npublic sealed class UnusedSibling {}\n"
+    )
+    (tests / "StoreBehaviorTests.cs").write_text(
+        "using Sample;\n"
+        "public sealed class StoreBehaviorTests {\n"
+        "    public void Works() {\n"
+        "        var store = new Store();\n"
+        "        store.Items.Add(2);\n"
+        "        store.Items.Take(1);\n"
+        "    }\n"
+        "}\n"
+    )
+
+    graph = build_dep_graph(tmp_path)
+    test_file = str(tests / "StoreBehaviorTests.cs")
+    inventory = str(src / "Inventory.cs")
+    unused = str(src / "UnusedSibling.cs")
+
+    # Direct receiver binding: the test touches store.Items (Inventory), so
+    # Inventory.cs is a direct import — not transitive-only through Store.
+    assert inventory in graph[test_file]["imports"]
+    assert unused not in graph[test_file]["imports"]
+    assert graph[unused]["importer_count"] == 0

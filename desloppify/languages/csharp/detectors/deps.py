@@ -17,6 +17,7 @@ from desloppify.languages.csharp.detectors.deps_support_metadata import (
     expand_namespace_matches as _expand_namespace_matches,
     parse_file_metadata as _parse_file_metadata,
     parse_file_symbols as _parse_file_symbols,
+    parse_member_bindings as _parse_member_bindings,
 )
 from desloppify.languages.csharp.detectors.deps_support_projects import (
     find_csproj_files as _find_csproj_files,
@@ -204,14 +205,25 @@ def build_dep_graph(path: Path, roslyn_cmd: str | None = None) -> dict[str, dict
     namespace_symbols: dict[tuple[str | None, str], set[str]] = defaultdict(set)
     file_to_reference_symbols: dict[str, set[str]] = {}
     file_to_identifiers: dict[str, set[str]] = {}
+    file_to_qualified: dict[str, set[str]] = {}
+    file_to_member_types: dict[str, dict[str, set[str]]] = {}
+    file_to_var_types: dict[str, dict[str, str]] = {}
+    file_to_member_accesses: dict[str, dict[str, set[str]]] = {}
     entrypoint_files: set[str] = set()
     for filepath in cs_files:
         source = resolve_path(filepath)
         namespace, usings, is_entrypoint = _parse_file_metadata(filepath)
-        declared_types, identifiers, extension_methods = _parse_file_symbols(filepath)
+        declared_types, identifiers, extension_methods, qualified_refs = (
+            _parse_file_symbols(filepath)
+        )
         file_to_namespace[source] = namespace
         file_to_usings[source] = usings
         file_to_identifiers[source] = identifiers
+        file_to_qualified[source] = qualified_refs
+        member_types, var_types, member_accesses = _parse_member_bindings(filepath)
+        file_to_member_types[source] = member_types
+        file_to_var_types[source] = var_types
+        file_to_member_accesses[source] = member_accesses
         for type_name in declared_types:
             namespace_types[namespace, type_name].add(source)
         reference_symbols = declared_types | extension_methods
@@ -241,6 +253,14 @@ def build_dep_graph(path: Path, roslyn_cmd: str | None = None) -> dict[str, dict
         if proj is not None:
             project_to_namespaces[proj].add(ns)
 
+    # Type name -> declaring files, across all namespaces. Receiver binding
+    # (#893) resolves `var s = new Store(); s.Items.X()` through Store's
+    # member map; same-named types in different namespaces merge, which is
+    # consistent with the rest of this lexical fallback.
+    type_name_to_files: dict[str, set[str]] = defaultdict(set)
+    for (_ns, _tname), _files in namespace_types.items():
+        type_name_to_files[_tname] |= _files
+
     for source, usings in file_to_usings.items():
         proj = file_to_project.get(source)
         allowed_projects: set[Path] | None = None
@@ -257,6 +277,50 @@ def build_dep_graph(path: Path, roslyn_cmd: str | None = None) -> dict[str, dict
         namespace = file_to_namespace[source]
         for identifier in file_to_identifiers[source]:
             for target in namespace_symbols.get((namespace, identifier), set()):
+                if target == source:
+                    continue
+                if (
+                    allowed_projects is not None
+                    and file_to_project.get(target) not in allowed_projects
+                ):
+                    continue
+                graph[source]["imports"].add(target)
+                graph[target]["importers"].add(source)
+
+        # Inferred property receivers (#893): `var s = new Store()` +
+        # `s.Items.Take()` binds through Store.Items's declared type to a
+        # direct edge on Inventory.cs instead of a transitive-only one.
+        for var_name, var_type in file_to_var_types[source].items():
+            member_names = file_to_member_accesses[source].get(var_name, set())
+            if not member_names:
+                continue
+            for declaring in type_name_to_files.get(var_type, ()):
+                member_map = file_to_member_types.get(declaring, {})
+                for member in member_names:
+                    for member_type in member_map.get(member, ()):
+                        for target in type_name_to_files.get(member_type, ()):
+                            if target == source or target == declaring:
+                                continue
+                            if (
+                                allowed_projects is not None
+                                and file_to_project.get(target) not in allowed_projects
+                            ):
+                                continue
+                            graph[source]["imports"].add(target)
+                            graph[target]["importers"].add(source)
+
+        # Fully-qualified references need no using directive (#683). Resolve
+        # the longest namespace prefix that declares the next segment.
+        for qref in file_to_qualified[source]:
+            segments = qref.split(".")
+            targets: set[str] = set()
+            for idx in range(len(segments) - 1, 0, -1):
+                candidate_ns = ".".join(segments[:idx])
+                found = namespace_types.get((candidate_ns, segments[idx]))
+                if found:
+                    targets = found
+                    break
+            for target in targets:
                 if target == source:
                     continue
                 if (

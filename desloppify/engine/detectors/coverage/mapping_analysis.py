@@ -104,7 +104,12 @@ def analyze_test_quality(
             )
             is_placeholder = False
 
-        if test_functions == 0:
+        if test_functions == 0 and assertions > 0:
+            # Assertion-shaped calls but no recognized test functions —
+            # probably a custom harness (#892). Unknown beats a confident
+            # "no tests" claim.
+            quality = "unknown"
+        elif test_functions == 0:
             quality = "no_tests"
         elif assertions == 0:
             quality = "assertion_free"
