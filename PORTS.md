@@ -70,7 +70,7 @@ against fork HEAD `3a7735d` (v1.0). Verdicts:
 | #831 TS unused ignores tsconfig.json | DONE | nearest-tsconfig walk (ported #713, 99e0c2a3) |
 | #830 partial trusted review import resolves outside dimension | TRACK | |
 | #829 schema-drift clustering quadratic | SKIP | perf |
-| #827 CLI commit records omit cluster attribution | TRACK | |
+| #827 CLI commit records omit cluster attribution | DONE | bf276c8c |
 | #826 blind packet structure profiles go stale | TRACK | |
 | #825 triage includes inactive historical clusters | TRACK | |
 | #824 Rust multiline attributes hide annotations | DONE | metadata walk crosses `)]` tails |

@@ -130,3 +130,7 @@ Committed on maint/continuation:
   mechanical cluster, plan resolve refuses because subjective::X is
   current next item, review refuses because objective findings open.
   Needs queue-ordering/routing work in _work_queue.
+
+## Session 2026-11-01 (VII)
+- #827 commit records now attribute the unique owning cluster;
+  ambiguous stays null. bf276c8c.
