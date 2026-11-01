@@ -34,7 +34,7 @@ def test_formatting_helpers():
     assert color == "red"
 
 
-def test_warn_explicit_lang_with_no_files(monkeypatch, capsys, tmp_path):
+def test_warn_no_reviewable_files(monkeypatch, capsys, tmp_path):
     args = SimpleNamespace(lang="python")
     lang = SimpleNamespace(name="python")
 
@@ -42,7 +42,7 @@ def test_warn_explicit_lang_with_no_files(monkeypatch, capsys, tmp_path):
 
     monkeypatch.setattr(lang_mod, "auto_detect_lang", lambda _root: "typescript")
 
-    scan_helpers_mod.warn_explicit_lang_with_no_files(
+    scan_helpers_mod.warn_no_reviewable_files(
         args,
         lang,
         Path(tmp_path),

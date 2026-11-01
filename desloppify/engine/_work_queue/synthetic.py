@@ -192,6 +192,25 @@ def build_triage_stage_items(plan: dict, state: dict) -> list[WorkQueueItem]:
     return items
 
 
+def _has_reviewable_source_files(state: dict) -> bool:
+    """False when the last scan found zero production-zone source files.
+
+    A misdetected language or a config-only tree yields 0 reviewable
+    files; queueing subjective assessments then produces review requests
+    that can never be fulfilled (#700). Unknown means True — only
+    suppress when a scan positively recorded zero files.
+    """
+    distribution = state.get("zone_distribution")
+    if isinstance(distribution, dict) and distribution:
+        return int(distribution.get("production", 0) or 0) > 0
+    metrics = state.get("codebase_metrics")
+    if isinstance(metrics, dict):
+        entry = metrics.get(str(state.get("lang") or ""))
+        if isinstance(entry, dict) and "total_files" in entry:
+            return int(entry.get("total_files", 0) or 0) > 0
+    return True
+
+
 def build_subjective_items(
     state: dict,
     issues: dict,
@@ -207,6 +226,8 @@ def build_subjective_items(
 
     subjective_entries = all_subjective_entries(state, dim_scores=dim_scores)
     if not subjective_entries:
+        return []
+    if not _has_reviewable_source_files(state):
         return []
     unassessed_dims = {
         str(name).strip()

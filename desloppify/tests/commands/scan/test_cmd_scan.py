@@ -15,7 +15,7 @@ from desloppify.app.commands.scan.helpers import (
     collect_codebase_metrics,
     effective_include_slow,
     resolve_scan_profile,
-    warn_explicit_lang_with_no_files,
+    warn_no_reviewable_files,
     format_delta,
 )
 from desloppify.app.commands.scan.reporting.summary import (
@@ -44,7 +44,7 @@ class TestScanModuleSanity:
         assert callable(collect_codebase_metrics)
         assert callable(format_delta)
         assert callable(show_diff_summary)
-        assert callable(warn_explicit_lang_with_no_files)
+        assert callable(warn_no_reviewable_files)
 
 
 class TestCmdScanExecution:
@@ -578,11 +578,11 @@ class TestCollectCodebaseMetrics:
 
 
 # ---------------------------------------------------------------------------
-# warn_explicit_lang_with_no_files
+# warn_no_reviewable_files
 # ---------------------------------------------------------------------------
 
 
-class TestWarnExplicitLangWithNoFiles:
+class TestWarnNoReviewableFiles:
     def test_warns_for_explicit_lang_when_zero_files(
         self, monkeypatch, capsys, tmp_path
     ):
@@ -594,24 +594,27 @@ class TestWarnExplicitLangWithNoFiles:
 
         monkeypatch.setattr(lang_mod, "auto_detect_lang", lambda _root: "python")
 
-        warn_explicit_lang_with_no_files(
+        warn_no_reviewable_files(
             FakeArgs(), FakeLang(), tmp_path, {"total_files": 0}
         )
         out = capsys.readouterr().out
         assert "No typescript source files found" in out
         assert "Omit `--lang` to auto-detect." in out
 
-    def test_no_warning_when_not_explicit(self, capsys, tmp_path):
+    def test_warns_when_not_explicit_either(self, capsys, tmp_path):
+        # #700: a misdetected language yields a zero-file scan too — warn.
         class FakeArgs:
             lang = None
 
         class FakeLang:
             name = "typescript"
 
-        warn_explicit_lang_with_no_files(
+        warn_no_reviewable_files(
             FakeArgs(), FakeLang(), tmp_path, {"total_files": 0}
         )
-        assert capsys.readouterr().out == ""
+        out = capsys.readouterr().out
+        assert "No typescript source files found" in out
+        assert "--lang" in out
 
     def test_no_warning_when_files_present(self, capsys, tmp_path):
         class FakeArgs:
@@ -620,7 +623,7 @@ class TestWarnExplicitLangWithNoFiles:
         class FakeLang:
             name = "typescript"
 
-        warn_explicit_lang_with_no_files(
+        warn_no_reviewable_files(
             FakeArgs(), FakeLang(), tmp_path, {"total_files": 5}
         )
         assert capsys.readouterr().out == ""

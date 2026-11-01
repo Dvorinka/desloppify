@@ -1294,3 +1294,83 @@ def test_triage_playbook_commands_cover_runner_and_stage_validation() -> None:
         assert "Unsupported triage stage" in str(exc)
     else:  # pragma: no cover
         raise AssertionError("Expected invalid stage to raise")
+
+
+def test_build_subjective_items_suppressed_when_scan_found_no_production_files() -> None:
+    """#700: a zero-source-file or config-only scan must not queue
+    subjective review work that can never be fulfilled."""
+    base_state = {
+        "dimension_scores": {
+            "Naming quality": {
+                "score": 0.0,
+                "strict": 0.0,
+                "failing": 0,
+                "detectors": {
+                    "subjective_assessment": {"dimension_key": "naming_quality"}
+                },
+            }
+        },
+    }
+    control = {
+        **base_state,
+        "zone_distribution": {"production": 5, "test": 2},
+    }
+    assert [
+        item["id"] for item in synthetic_mod.build_subjective_items(control, {})
+    ] == ["subjective::naming_quality"]
+
+    # Misdetected language: file_finder returned nothing at all.
+    empty = {
+        **base_state,
+        "lang": "typescript",
+        "codebase_metrics": {"typescript": {"total_files": 0}},
+    }
+    assert synthetic_mod.build_subjective_items(empty, {}) == []
+
+    # Config-only package: files exist but none are production zone.
+    config_only = {**base_state, "zone_distribution": {"config": 1}}
+    assert synthetic_mod.build_subjective_items(config_only, {}) == []
+
+    # Unknown signal (older states) keeps prior behavior.
+    assert [
+        item["id"] for item in synthetic_mod.build_subjective_items(base_state, {})
+    ] == ["subjective::naming_quality"]
+
+
+def test_warn_no_reviewable_files_covers_auto_detect_and_non_production(
+    capsys, tmp_path,
+) -> None:
+    """#700: scan warns loudly on any zero-reviewable-file scan, not only
+    when --lang was passed explicitly."""
+    from desloppify.app.commands.scan.helpers import warn_no_reviewable_files
+
+    lang = SimpleNamespace(name="typescript")
+
+    warn_no_reviewable_files(
+        SimpleNamespace(lang=None), lang, tmp_path, {"total_files": 0}
+    )
+    out = capsys.readouterr().out
+    assert "No typescript source files found" in out
+    assert "--lang" in out
+    assert "vacuous" in out
+
+    # Files exist but none are production zone.
+    warn_no_reviewable_files(
+        SimpleNamespace(lang=None),
+        lang,
+        tmp_path,
+        {"total_files": 3},
+        zone_map=SimpleNamespace(production_count=lambda: 0),
+    )
+    out = capsys.readouterr().out
+    assert "none are production source" in out
+
+    # Production files present → silent.
+    warn_no_reviewable_files(
+        SimpleNamespace(lang=None),
+        lang,
+        tmp_path,
+        {"total_files": 3},
+        zone_map=SimpleNamespace(production_count=lambda: 3),
+    )
+    assert capsys.readouterr().out == ""
