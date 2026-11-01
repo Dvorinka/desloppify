@@ -25,7 +25,7 @@ against fork HEAD `3a7735d` (v1.0). Verdicts:
 | #929/#928 backlog duplicate IDs / repeats findings | TRACK | |
 | #927 move misses imports with explicit TS extensions | DONE | specifier-form variants in move (e4fd165a) |
 | #923 CLI threatens target-match resets though policy disabled | DONE | fixed here — threat text aligned with disabled policy (fix e) |
-| #922 plan resolve exits 0 on queue-order guard reject | TRACK | |
+| #922 plan resolve exits 0 on queue-order guard reject | DONE | CommandError exit 1 + done-log moved after guard |
 | #921 test-coverage summary labels LOC potential wrong | SKIP | display |
 | #919 cluster resolve rejects cluster shown by next | TRACK | |
 | #918/#917 Windows triage UTF-8 / npm codex.cmd quoting | SKIP | Windows runner |
