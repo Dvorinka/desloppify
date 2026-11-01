@@ -185,6 +185,67 @@ class TestCrossLangSecretNames:
         finally:
             os.unlink(path)
 
+    def test_hardcoded_secret_translation_string_ok(self):
+        """Translation/UI strings in secret-named keys are not secrets."""
+        content = 'password_label = "Enter your password below"'
+        path = _write_temp_file(content)
+        try:
+            entries, _ = detect_security_issues([path], None, "python")
+            secret_name = [
+                e for e in entries if e["detail"]["kind"] == "hardcoded_secret_name"
+            ]
+            assert len(secret_name) == 0
+        finally:
+            os.unlink(path)
+
+    def test_hardcoded_secret_camelcase_field_constant_ok(self):
+        """Identifier-shaped constants are field names, not secrets."""
+        content = 'apiKeyField = "clientSecret"'
+        path = _write_temp_file(content, suffix=".ts")
+        try:
+            entries, _ = detect_security_issues([path], None, "typescript")
+            secret_name = [
+                e for e in entries if e["detail"]["kind"] == "hardcoded_secret_name"
+            ]
+            assert len(secret_name) == 0
+        finally:
+            os.unlink(path)
+
+    def test_hardcoded_secret_snakecase_field_constant_ok(self):
+        content = 'TOKEN_FIELD = "access_token"'
+        path = _write_temp_file(content)
+        try:
+            entries, _ = detect_security_issues([path], None, "python")
+            secret_name = [
+                e for e in entries if e["detail"]["kind"] == "hardcoded_secret_name"
+            ]
+            assert len(secret_name) == 0
+        finally:
+            os.unlink(path)
+
+    def test_hardcoded_secret_known_format_still_flagged(self):
+        """Known secret formats fire regardless of the name gate."""
+        content = 'aws_key = "AKIAIOSFODNN7EXAMPLE"'
+        path = _write_temp_file(content)
+        try:
+            entries, _ = detect_security_issues([path], None, "python")
+            assert any("AWS" in e["summary"] for e in entries)
+        finally:
+            os.unlink(path)
+
+    def test_hardcoded_secret_low_entropy_long_value_ok(self):
+        """Long but low-entropy literals are not secrets."""
+        content = 'api_token_hint = "aaaaaaaaaaaaaa"'
+        path = _write_temp_file(content)
+        try:
+            entries, _ = detect_security_issues([path], None, "python")
+            secret_name = [
+                e for e in entries if e["detail"]["kind"] == "hardcoded_secret_name"
+            ]
+            assert len(secret_name) == 0
+        finally:
+            os.unlink(path)
+
     def test_hardcoded_secret_in_test_zone_skipped(self):
         content = 'password = "test_secret_value123"'
         path = _write_temp_file(content)

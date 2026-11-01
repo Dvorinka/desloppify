@@ -30,6 +30,9 @@ from desloppify.engine.detectors.patterns.security import (
 from desloppify.engine.detectors.patterns.security import (
     is_placeholder as _is_placeholder,
 )
+from desloppify.engine.detectors.patterns.security import (
+    looks_like_secret_value as _looks_like_secret_value,
+)
 
 
 @dataclass(frozen=True)
@@ -110,7 +113,7 @@ def _secret_name_entries(
             continue
         if _is_env_lookup(line):
             continue
-        if _is_placeholder(value):
+        if not _looks_like_secret_value(value):
             continue
         entries.append(
             make_security_entry(
