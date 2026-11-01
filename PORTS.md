@@ -46,9 +46,9 @@ against fork HEAD `3a7735d` (v1.0). Verdicts:
 | #887 Go scanner invokes removed golangci-lint v1 flag | DONE | cmd_fn picks v2 flag by installed major |
 | #886 Windows Codex batch quoting/locale | SKIP | |
 | #885 C# field names flagged as secrets | DONE (class) | covered by value-based secret gate (fix b) |
-| #884 clarify defer disposition in triage prompts | TRACK | prompt copy |
-| #883 strategist recent_investment counts lifetime | TRACK | |
-| #882 repeated strategist identifiers erase evidence | TRACK | |
+| #884 clarify defer disposition in triage prompts | DONE | 8e893135 — same defect as #784; defer removed from staged contract (skip = retains backlog) |
+| #883 strategist recent_investment counts lifetime | DONE | dbbe6807 — windowed to trajectory |
+| #882 repeated strategist identifiers erase evidence | DONE | 641a9a37 — upsert preserves lifecycle, proper reopen |
 | #873 duplicate detector compares nested callbacks to container | DONE | already fixed — overlapping spans skipped (4fa23bba) |
 | #872 accepting unchanged findings schedules another review | DONE | 44b49ecc — intentional; documented in SKILL.md |
 | #867 cppcheck batching → cross-batch unused FPs | DONE (class) | covered by ported #869 whole-program pass |
