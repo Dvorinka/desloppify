@@ -118,6 +118,14 @@ def analyze_scope_issues(
     for tracked in scope.values():
         if not tracked.locally_created:
             continue
+        # self.x dicts are analyzed once at class scope — sibling methods
+        # visited later may consume them (#801).
+        if (
+            not is_class
+            and tracked.name.startswith("self.")
+            and getattr(visitor, "_in_class", False)
+        ):
+            continue
 
         suppress_dead = (
             tracked.returned_or_passed
@@ -158,7 +166,14 @@ def analyze_scope_issues(
                 )
 
         phantom_keys = read_keys - written_keys
-        for key in sorted(phantom_keys):
+        # A dict that escaped through a call boundary or was rebound to
+        # unseen content may hold keys we never saw written (#801, #846).
+        suppress_phantom = (
+            tracked.returned_or_passed
+            or tracked.provenance_unknown
+            or tracked.has_dynamic_key
+        )
+        for key in sorted(phantom_keys) if not suppress_phantom else ():
             line = tracked.reads[key][0]
             issues.append(
                 {
@@ -219,6 +234,14 @@ def analyze_scope_issues(
                 first, second = write_lines[idx], write_lines[idx + 1]
                 has_read_between = any(first < read <= second for read in read_lines)
                 if not has_read_between:
+                    # Conditional/branch writes aren't sequential overwrites —
+                    # defaults overridden on one path are intentional (#801,
+                    # #846). Only two unconditional writes prove a dead store.
+                    if (
+                        first in tracked.conditional_writes
+                        or second in tracked.conditional_writes
+                    ):
+                        continue
                     issues.append(
                         {
                             "file": visitor.filepath,

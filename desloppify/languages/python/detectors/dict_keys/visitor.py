@@ -23,8 +23,10 @@ class DictKeyVisitor(ast.NodeVisitor):
     def __init__(self, filepath: str):
         self.filepath = filepath
         self._scopes: list[dict[str, TrackedDict]] = []
+        self._nonliteral_names: list[set[str]] = []  # parallel to _scopes
         self._class_dicts: dict[str, TrackedDict] = {}  # self.x dicts
-        self._in_init_or_setup = False
+        self._in_class = False
+        self._cond_depth = 0
         self._issues: list[dict] = []
         self._dict_literals: list[dict] = []  # for schema drift
 
@@ -59,19 +61,20 @@ class DictKeyVisitor(ast.NodeVisitor):
     # -- Scope management --
 
     def visit_FunctionDef(self, node: ast.FunctionDef | ast.AsyncFunctionDef):
-        prev_init = self._in_init_or_setup
-        self._in_init_or_setup = node.name in ("__init__", "setUp", "setup")
         self._scopes.append({})
+        self._nonliteral_names.append(set())
         self.generic_visit(node)
         scope = self._scopes.pop()
+        self._nonliteral_names.pop()
         self._issues.extend(analyze_scope_issues(self, scope, node.name))
-        self._in_init_or_setup = prev_init
 
     visit_AsyncFunctionDef = visit_FunctionDef
 
     def visit_ClassDef(self, node: ast.ClassDef) -> None:
         prev_class_dicts = self._class_dicts
+        prev_in_class = self._in_class
         self._class_dicts = {}
+        self._in_class = True
         self.generic_visit(node)
         self._issues.extend(
             analyze_scope_issues(
@@ -82,6 +85,7 @@ class DictKeyVisitor(ast.NodeVisitor):
             )
         )
         self._class_dicts = prev_class_dicts
+        self._in_class = prev_in_class
 
     # -- Dict creation --
 
@@ -90,7 +94,15 @@ class DictKeyVisitor(ast.NodeVisitor):
             target = node.targets[0]
             name = _get_name(target)
             if name:
-                self._check_dict_creation(name, node.value, node.lineno)
+                created = self._check_dict_creation(name, node.value, node.lineno)
+                if not created:
+                    # Bound to something we can't see — reads may be
+                    # satisfied by external content (#846).
+                    if self._nonliteral_names:
+                        self._nonliteral_names[-1].add(name)
+                    tracked = self._get_tracked(name)
+                    if tracked:
+                        tracked.provenance_unknown = True
         # Also check for subscript writes: d["key"] = val
         for target in node.targets:
             self._check_subscript_write(target, node.lineno)
@@ -154,9 +166,15 @@ class DictKeyVisitor(ast.NodeVisitor):
             td = self._track(
                 name, line, locally_created=True, initial_keys=initial_keys
             )
-            # Store as class dict if it's self.x
-            if name.startswith("self.") and self._in_init_or_setup:
+            if self._cond_depth:
+                td.conditional_writes.add(line)
+            if self._nonliteral_names and name in self._nonliteral_names[-1]:
+                td.provenance_unknown = True
+            # self.x dicts live at class scope — other methods may consume
+            # them (#801). Analyzed once when the class visit completes.
+            if name.startswith("self."):
                 self._class_dicts[name] = td
+        return is_creation
 
     def _check_subscript_write(self, target: ast.expr, line: int):
         """Handle d["key"] = val or d["key"] += val."""
@@ -171,8 +189,48 @@ class DictKeyVisitor(ast.NodeVisitor):
             return
         if key:
             td.writes[key].append(line)
+            if self._cond_depth:
+                td.conditional_writes.add(line)
         else:
             td.has_dynamic_key = True
+
+    # -- Conditional regions (writes here aren't sequential overwrites) --
+
+    def _visit_conditional_bodies(self, bodies: list[list[ast.stmt]]) -> None:
+        for body in bodies:
+            self._cond_depth += 1
+            for stmt in body:
+                self.visit(stmt)
+            self._cond_depth -= 1
+
+    def visit_If(self, node: ast.If) -> None:
+        self.visit(node.test)
+        self._visit_conditional_bodies([node.body, node.orelse])
+
+    def visit_While(self, node: ast.While) -> None:
+        self.visit(node.test)
+        self._visit_conditional_bodies([node.body, node.orelse])
+
+    def visit_Try(self, node: ast.Try) -> None:
+        self._cond_depth += 1
+        for stmt in node.body:
+            self.visit(stmt)
+        for handler in node.handlers:
+            self.visit(handler)
+        self._cond_depth -= 1
+        for stmt in node.orelse + node.finalbody:
+            self.visit(stmt)
+
+    def visit_TryStar(self, node: ast.TryStar) -> None:
+        self.visit_Try(node)
+
+    def visit_Match(self, node) -> None:
+        self.visit(node.subject)
+        for case in node.cases:
+            self._cond_depth += 1
+            for stmt in case.body:
+                self.visit(stmt)
+            self._cond_depth -= 1
 
     # -- Dict reads --
 
@@ -232,13 +290,15 @@ class DictKeyVisitor(ast.NodeVisitor):
         self.generic_visit(node)
 
     def visit_For(self, node: ast.For):
-        """Handle `for x in d` — bulk read."""
+        """Handle `for x in d` — bulk read; containers in iter escape (#846)."""
         name = _get_name(node.iter)
         if name:
             td = self._get_tracked(name)
             if td:
                 td.bulk_read = True
-        self.generic_visit(node)
+        mark_returned_or_passed(self, node.iter)
+        self.visit(node.target)
+        self._visit_conditional_bodies([node.body, node.orelse])
 
     def visit_Starred(self, node: ast.Starred):
         """Handle {**d} or func(*d)."""

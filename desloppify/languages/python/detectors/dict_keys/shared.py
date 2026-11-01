@@ -20,6 +20,12 @@ class TrackedDict:
     writes: dict[str, list[int]] = field(default_factory=lambda: defaultdict(list))
     reads: dict[str, list[int]] = field(default_factory=lambda: defaultdict(list))
     bulk_read: bool = False
+    # Write lines inside conditional/loop bodies — overwrite claims need two
+    # unconditional writes (#801, #846).
+    conditional_writes: set[int] = field(default_factory=set)
+    # The name was bound to a non-dict-literal value in this scope — reads
+    # may be satisfied by external content (#846).
+    provenance_unknown: bool = False
 
 
 _CONFIG_NAMES = {
