@@ -97,6 +97,21 @@ def resolve_import_spec(
             sibling = os.path.join(os.path.dirname(test_path), candidate)
             if sibling in production_files:
                 return sibling
+    # Scan-root fallback (#907): tests outside the scan root import relative
+    # to the scanned package root — `from routes.math_ops import x` while the
+    # file lives at `service/routes/math_ops.py`. Accept a suffix match only
+    # when exactly one production file qualifies; parallel services with
+    # same-named modules stay honestly unresolved.
+    matches = [
+        prod
+        for prod in production_files
+        if any(
+            prod.replace("\\", "/").endswith(f"/{candidate}")
+            for candidate in candidates
+        )
+    ]
+    if len(matches) == 1:
+        return matches[0]
     return None
 
 

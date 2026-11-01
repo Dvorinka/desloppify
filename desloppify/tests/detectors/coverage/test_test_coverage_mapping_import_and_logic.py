@@ -322,6 +322,46 @@ class TestResolveTsImport:
         assert result == {profile, widget}
 
 
+class TestPythonScanRootImports:
+    def test_external_test_import_maps_via_scan_root(self, tmp_path):
+        """#907: tests outside the scan root resolve scan-root-relative imports."""
+        prod = "service/routes/math_ops.py"
+        test = _write_file(
+            tmp_path,
+            "tests/test_route_behavior.py",
+            "from routes.math_ops import add\n"
+            "def test_add():\n    assert add(1, 2) == 3\n",
+        )
+        result = import_based_mapping({}, {test}, {prod}, "python")
+        assert result == {prod}
+
+    def test_ambiguous_parallel_services_stay_unresolved(self, tmp_path):
+        """#907: same-named modules across services don't guess."""
+        prod_a = "service_a/routes/math_ops.py"
+        prod_b = "service_b/routes/math_ops.py"
+        test = _write_file(
+            tmp_path,
+            "tests/test_route_behavior.py",
+            "from routes.math_ops import add\n"
+            "def test_add():\n    assert add(1, 2) == 3\n",
+        )
+        result = import_based_mapping({}, {test}, {prod_a, prod_b}, "python")
+        assert result == set()
+
+    def test_scan_root_resolution_is_unambiguous_when_unique(self, tmp_path):
+        """Suffix matching still resolves when only one service qualifies."""
+        prod_a = "service_a/routes/math_ops.py"
+        prod_b = "service_b/handlers/math_ops.py"
+        test = _write_file(
+            tmp_path,
+            "tests/test_route_behavior.py",
+            "from routes.math_ops import add\n"
+            "def test_add():\n    assert add(1, 2) == 3\n",
+        )
+        result = import_based_mapping({}, {test}, {prod_a, prod_b}, "python")
+        assert result == {prod_a}
+
+
 # ── _resolve_barrel_reexports ────────────────────────────
 
 

@@ -20,7 +20,12 @@ def _normalize_graph_paths(graph: dict) -> dict:
     root_prefix = str(get_project_root()) + os.sep
 
     def _to_rel(path: str) -> str:
-        return path[len(root_prefix) :] if path.startswith(root_prefix) else path
+        # Zone/production paths use forward slashes; native separators in
+        # graph paths (Windows) must match or lookups miss (#907).
+        stripped = (
+            path[len(root_prefix) :] if path.startswith(root_prefix) else path
+        )
+        return stripped.replace("\\", "/")
 
     needs_norm = any(k.startswith(root_prefix) for k in graph)
     if not needs_norm:
@@ -47,7 +52,10 @@ def _discover_scorable_and_tests(
     root_prefix = str(get_project_root()) + os.sep
 
     def _to_rel(path: str) -> str:
-        return path[len(root_prefix) :] if path.startswith(root_prefix) else path
+        stripped = (
+            path[len(root_prefix) :] if path.startswith(root_prefix) else path
+        )
+        return stripped.replace("\\", "/")
 
     all_files = zone_map.all_files()
     production_files = set(zone_map.include_only(all_files, Zone.PRODUCTION, Zone.SCRIPT))

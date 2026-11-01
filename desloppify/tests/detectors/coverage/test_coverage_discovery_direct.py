@@ -104,3 +104,49 @@ def test_normalize_graph_paths_rewrites_absolute_import_sets() -> None:
     assert "src/mod.py" in normalized
     assert normalized["src/mod.py"]["imports"] == {"src/other.py", "src/third.py"}
     assert normalized["src/mod.py"]["importer_count"] == 1
+
+
+def test_normalize_graph_paths_normalizes_windows_separators(monkeypatch) -> None:
+    """#907: Windows \\ graph paths must match forward-slash zone keys."""
+    monkeypatch.setattr(discovery_mod.os, "sep", "\\")
+    root = str(discovery_mod.get_project_root())
+    graph = {
+        root + "\\service\\main.py": {
+            "imports": {root + "\\service\\routes\\math_ops.py"},
+            "importer_count": 0,
+        },
+        root + "\\service\\routes\\math_ops.py": {
+            "imports": set(),
+            "importer_count": 1,
+        },
+    }
+
+    normalized = discovery_mod._normalize_graph_paths(graph)
+
+    assert "service/main.py" in normalized
+    assert "service/routes/math_ops.py" in normalized
+    assert normalized["service/main.py"]["imports"] == {
+        "service/routes/math_ops.py"
+    }
+    assert normalized["service/routes/math_ops.py"]["importer_count"] == 1
+
+
+def test_extra_test_files_normalize_windows_separators(monkeypatch) -> None:
+    """#907: external test paths strip root prefix and normalize to /."""
+    monkeypatch.setattr(discovery_mod.os, "sep", "\\")
+    root = str(discovery_mod.get_project_root())
+    prod = "service/routes/math_ops.py"
+    zone_map = _FakeZoneMap({Zone.PRODUCTION: {prod}})
+    monkeypatch.setattr(discovery_mod, "_file_loc", lambda path: 0)
+    monkeypatch.setattr(
+        discovery_mod, "_has_testable_logic", lambda path, lang: False
+    )
+
+    _, tests, _, _ = discovery_mod._discover_scorable_and_tests(
+        graph={},
+        zone_map=zone_map,
+        lang_name="python",
+        extra_test_files={root + "\\tests\\test_route_behavior.py"},
+    )
+
+    assert tests == {"tests/test_route_behavior.py"}
