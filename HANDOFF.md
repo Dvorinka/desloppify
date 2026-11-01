@@ -85,3 +85,39 @@ Committed on maint/continuation:
 ## Verified on Invico
 `desloppify --lang typescript scan --path apps/web --profile ci --no-badge` works —
 reads upstream-written `.desloppify` state fine, preserved plan/baseline, scores.
+
+## Session 2026-11-01 (V) — TRACK machinery batch II
+Committed on maint/continuation:
+- #855 reconcile restores skip-kind status AND cleans stale reopen
+  metadata (note/resolved_at/attestation/reopen_count from skip entry).
+  52322257.
+- #784 staged reflect prompts no longer leak strategist defer/break_up
+  vocabulary — upstream PR #637 ported (include_auto_cluster_decision_
+  guidance flag). 8e893135. Also resolves #884 (same defect).
+- #780 follow-up: plan_path_for_state coerces str→Path. 23a47730.
+- #700 zero-reviewable-file policy: warn_no_reviewable_files fires on
+  ANY zero-production-file scan (auto-detect too); build_subjective_
+  items returns [] when zone_distribution has no production or
+  codebase_metrics total_files=0. b71152c1.
+- #863 ported upstream PR #751: resolution_kind {file_deleted,
+  zone_policy} exempt from strict; inferred auto_resolved still fails
+  (intentional per #309). scoring.md documented. c8be04ab.
+- #872 intentional (upstream test asserts wontfix→stale) — documented
+  in SKILL.md key concepts. 44b49ecc.
+- #882 strategy::* upsert preserves lifecycle evidence; closed items
+  get proper strategist_reopen transition. 641a9a37.
+- #883 recent_investment windowed to score trajectory; untimestamped
+  resolutions not guessed recent. dbbe6807.
+- #900 PARTIAL: detector→dimension map wired into backlog/recent_
+  investment/rework; completed_clusters falls back to
+  execution_status=done clusters; printed hints use --add-step.
+  3e9027f3. REMAINING: strategy:: ids sit in queue_order but next
+  shows "0 items" (synthetic prefix filtered — needs execution-queue
+  routing), cmd_plan_resolve logs done before guards, enrichment gate
+  hits already-done clusters, mixed operation/issue counting.
+
+## Remaining PORT rows
+- #888 (step-count contradiction + subjective/objective queue
+  deadlock) — next priority.
+- Rest of triage cluster: #826 #825 #823 #821 #815 #813 #809 #805
+  #785 #779 #759 #754 #898 #845 #832 #830 #827 #908, then PR rows.
