@@ -760,3 +760,66 @@ class TestResolveAliasLongestPrefix:
         result = deps_resolve_mod.resolve_alias("@/utils/helpers", paths, tmp_path)
         expected = (tmp_path / "src/utils/helpers").resolve()
         assert result == expected
+
+
+class TestWorkspacePackageExports:
+    def _workspace(self, tmp_path):
+        """Linked package exporting TS source through package.json exports."""
+        _write(
+            tmp_path,
+            "packages/mail/package.json",
+            json.dumps(
+                {
+                    "name": "@example/mail",
+                    "exports": {".": "./src/index.ts", "./send": "./src/send.ts"},
+                }
+            ),
+        )
+        _write(tmp_path, "packages/mail/src/index.ts", 'export { send } from "./send";')
+        _write(tmp_path, "packages/mail/src/send.ts", "export function send() {}\n")
+        node_modules = tmp_path / "node_modules/@example"
+        node_modules.mkdir(parents=True)
+        (node_modules / "mail").symlink_to(
+            (tmp_path / "packages/mail").resolve(), target_is_directory=True
+        )
+
+    def test_linked_workspace_export_is_an_edge(self, tmp_path):
+        """Bare imports of a linked workspace package reach its source."""
+        self._workspace(tmp_path)
+        _write(tmp_path, "app.ts", 'import { send } from "@example/mail";\n')
+
+        graph = deps_detector_mod.build_dep_graph(tmp_path)
+
+        app_key = str((tmp_path / "app.ts").resolve())
+        target_key = str((tmp_path / "packages/mail/src/index.ts").resolve())
+        assert target_key in graph[app_key]["imports"]
+        assert app_key in graph[target_key]["importers"]
+
+    def test_workspace_subpath_export_is_an_edge(self, tmp_path):
+        """Subpath exports like `pkg/sub` map through the exports map."""
+        self._workspace(tmp_path)
+        _write(tmp_path, "app.ts", 'import { send } from "@example/mail/send";\n')
+
+        graph = deps_detector_mod.build_dep_graph(tmp_path)
+
+        app_key = str((tmp_path / "app.ts").resolve())
+        target_key = str((tmp_path / "packages/mail/src/send.ts").resolve())
+        assert target_key in graph[app_key]["imports"]
+
+    def test_external_package_target_stays_out_of_graph(self, tmp_path):
+        """Packages resolving outside the scan root produce no edge."""
+        external = tmp_path.parent / "external-pkg"
+        (external / "src").mkdir(parents=True)
+        (external / "package.json").write_text(
+            json.dumps({"name": "@example/ext", "exports": {".": "./src/index.ts"}})
+        )
+        (external / "src/index.ts").write_text("export const x = 1;\n")
+        node_modules = tmp_path / "node_modules/@example"
+        node_modules.mkdir(parents=True)
+        (node_modules / "ext").symlink_to(external, target_is_directory=True)
+        _write(tmp_path, "app.ts", 'import { x } from "@example/ext";\n')
+
+        graph = deps_detector_mod.build_dep_graph(tmp_path)
+
+        app_key = str((tmp_path / "app.ts").resolve())
+        assert graph[app_key]["imports"] == set()

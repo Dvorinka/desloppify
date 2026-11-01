@@ -1057,3 +1057,47 @@ def test_naming_based_mapping_plural_hook_absent_is_noop():
     tests = {"src/widget.test.ts"}
     tested = naming_based_mapping(tests, production, "typescript")
     assert "src/other.ts" not in tested
+
+
+class TestWorkspacePackageExports:
+    def _workspace(self, tmp_path):
+        """Linked package exporting TS source through package.json exports."""
+        _write_file(
+            tmp_path,
+            "packages/mail/package.json",
+            json.dumps(
+                {
+                    "name": "@example/mail",
+                    "exports": {".": "./src/index.ts", "./send": "./src/send.ts"},
+                }
+            ),
+        )
+        node_modules = tmp_path / "apps/web/node_modules/@example"
+        node_modules.mkdir(parents=True)
+        (node_modules / "mail").symlink_to(
+            (tmp_path / "packages/mail").resolve(), target_is_directory=True
+        )
+
+    def test_workspace_export_resolves_to_source(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(ts_cov, "get_project_root", lambda: tmp_path)
+        self._workspace(tmp_path)
+        production = {_write_file(tmp_path, "packages/mail/src/index.ts")}
+        test = _write_file(tmp_path, "apps/web/test/mail.test.ts")
+        assert _resolve_import("@example/mail", test, production, "typescript") == str(
+            tmp_path / "packages/mail/src/index.ts"
+        )
+
+    def test_workspace_subpath_export_resolves(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(ts_cov, "get_project_root", lambda: tmp_path)
+        self._workspace(tmp_path)
+        production = {_write_file(tmp_path, "packages/mail/src/send.ts")}
+        test = _write_file(tmp_path, "apps/web/test/mail.test.ts")
+        assert _resolve_import(
+            "@example/mail/send", test, production, "typescript"
+        ) == str(tmp_path / "packages/mail/src/send.ts")
+
+    def test_missing_package_resolves_none(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(ts_cov, "get_project_root", lambda: tmp_path)
+        production = {_write_file(tmp_path, "src/index.ts")}
+        test = _write_file(tmp_path, "test/mail.test.ts")
+        assert _resolve_import("@absent/pkg", test, production, "typescript") is None

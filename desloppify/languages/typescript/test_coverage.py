@@ -14,6 +14,7 @@ from desloppify.languages.typescript.detectors.deps.resolve import (
     find_tsconfig_root,
     load_tsconfig_paths,
     resolve_alias,
+    resolve_package_specifier,
 )
 
 TS_IMPORT_RE = re.compile(
@@ -172,7 +173,7 @@ def resolve_import_spec(
     if not importer.is_absolute():
         importer = project_root / importer
     if spec.startswith("."):
-        base = (importer.parent / spec).resolve()
+        bases = [(importer.parent / spec).resolve()]
     else:
         config_root = find_tsconfig_root(importer.parent, project_root)
         if any(
@@ -185,29 +186,36 @@ def resolve_import_spec(
             base = get_src_path() / spec[2:]
         else:
             base = None
-        if base is None:
+        bases = [] if base is None else [base]
+        # A linked workspace package may still resolve through node_modules
+        # exports — after the alias target, mirroring TypeScript's own order.
+        pkg = resolve_package_specifier(spec, importer.parent, project_root)
+        if pkg is not None and pkg not in bases:
+            bases.append(pkg)
+        if not bases:
             return None
 
-    for ext in _TS_EXTENSIONS:
-        candidate = str(Path(str(base) + ext))
-        if candidate in production_files:
-            return candidate
-        rel_candidate = _relative_if_under_root(candidate)
-        if rel_candidate in production_files:
-            return rel_candidate
-        try:
-            resolved = str(Path(str(base) + ext).resolve())
-            if resolved in production_files:
-                return resolved
-            rel_resolved = _relative_if_under_root(resolved)
-            if rel_resolved in production_files:
-                return rel_resolved
-        except OSError as exc:
-            log_best_effort_failure(
-                logger,
-                f"resolve TypeScript import specifier {spec} from {test_path}",
-                exc,
-            )
+    for base in bases:
+        for ext in _TS_EXTENSIONS:
+            candidate = str(Path(str(base) + ext))
+            if candidate in production_files:
+                return candidate
+            rel_candidate = _relative_if_under_root(candidate)
+            if rel_candidate in production_files:
+                return rel_candidate
+            try:
+                resolved = str(Path(str(base) + ext).resolve())
+                if resolved in production_files:
+                    return resolved
+                rel_resolved = _relative_if_under_root(resolved)
+                if rel_resolved in production_files:
+                    return rel_resolved
+            except OSError as exc:
+                log_best_effort_failure(
+                    logger,
+                    f"resolve TypeScript import specifier {spec} from {test_path}",
+                    exc,
+                )
     return None
 
 
