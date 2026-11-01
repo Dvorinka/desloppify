@@ -38,7 +38,7 @@ against fork HEAD `3a7735d` (v1.0). Verdicts:
 | #905 Python coverage misses importlib hyphenated CLIs | DONE | spec_from_file_location/SourceFileLoader/load_source .py literals |
 | #903 C++ signature variance false compares | DONE | keyword reject + owner qualifier + type-normalized params |
 | #900 strategist history schema drift | PARTIAL | 3e9027f3 — dim mapping + done clusters + step hints done; remaining: strategy:: ids invisible to next, execution-log order, enrichment gate on done clusters, mixed counting |
-| #898 cluster-name resolution vs member IDs | TRACK | |
+| #898 cluster-name resolution vs member IDs | DONE | 2c1e5733 |
 | #894 (closed) scan reopens adjudicated findings | DONE upstream | |
 | #893 C# inferred property receivers → transitive_only | DONE | parse_member_bindings receiver edges |
 | #892 C# custom test runners → no_tests | DONE | "unknown" quality + broader assert spellings |
