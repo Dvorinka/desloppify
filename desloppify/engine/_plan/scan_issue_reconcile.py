@@ -349,6 +349,30 @@ def _reconcile_epic_clusters(
         result.changes += 1
 
 
+def _restore_skip_resolution_metadata(issue: dict, entry: dict) -> None:
+    """Repair metadata after scan merge spuriously reopened a durable skip.
+
+    upsert_issues reopens fixed/auto_resolved/false_positive findings that
+    reappear in detector output before the plan reconcile restores the
+    skip-kind status. The terminal row should look like the adjudicated
+    skip — not an unresolved reopen — so the stale reopen note, null
+    resolution fields, and spurious reopen_count bump are reverted here.
+    """
+    note = issue.get("note")
+    if not isinstance(note, str) or not note.startswith("Reopened (×"):
+        return
+    skipped_at = entry.get("created_at") or utc_now()
+    issue["note"] = entry.get("note") or ""
+    issue["resolved_at"] = skipped_at
+    issue["resolution_attestation"] = {
+        "kind": "manual",
+        "text": entry.get("attestation"),
+        "attested_at": skipped_at,
+        "scan_verified": False,
+    }
+    issue["reopen_count"] = max(0, int(issue.get("reopen_count") or 0) - 1)
+
+
 def _sync_skipped_issue_statuses(plan: PlanModel, state: StateModel) -> None:
     """Sync state status for skipped issues that are still 'open'.
 
@@ -365,6 +389,7 @@ def _sync_skipped_issue_statuses(plan: PlanModel, state: StateModel) -> None:
         target_status = skip_kind_state_status(kind)
         if target_status and target_status != "open":
             issue["status"] = target_status
+            _restore_skip_resolution_metadata(issue, entry)
 
 
 def reconcile_plan_after_scan(

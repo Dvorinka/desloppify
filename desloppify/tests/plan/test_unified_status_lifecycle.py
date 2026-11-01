@@ -338,6 +338,86 @@ class TestReconcileDataMigration:
         # State should be reopened from deferred back to open
         assert state["work_items"]["a"]["status"] == "open"
 
+    def test_reconcile_cleans_stale_reopen_metadata_on_skip_restore(self):
+        """#855: durable plan skip restored after a scan reopen keeps no stale
+        reopened metadata — terminal row mirrors the adjudicated skip."""
+        from desloppify.engine._state.merge_issues import upsert_issues
+
+        skipped_at = "2025-01-01T00:00:00+00:00"
+        plan = empty_plan()
+        plan["skipped"] = {
+            "fp1": {
+                "issue_id": "fp1",
+                "kind": "false_positive",
+                "note": "accepted",
+                "attestation": "reviewed",
+                "created_at": skipped_at,
+            },
+        }
+        issue = _issue("fp1", status="false_positive", detector="test_coverage")
+        issue.update(
+            note="accepted",
+            resolved_at=skipped_at,
+            resolution_attestation={
+                "kind": "manual",
+                "text": "reviewed",
+                "attested_at": skipped_at,
+                "scan_verified": False,
+            },
+            reopen_count=0,
+            last_seen="old",
+        )
+        state = {"issues": {"fp1": issue}, "scan_count": 5}
+
+        # Scan merge sees the finding again and reopens it.
+        upsert_issues(
+            state["issues"],
+            [_issue("fp1", detector="test_coverage")],
+            [],
+            "now",
+            lang="python",
+        )
+        assert state["issues"]["fp1"]["status"] == "open"
+
+        reconcile_plan_after_scan(plan, state)
+        row = state["work_items"]["fp1"]
+        assert row["status"] == "false_positive"
+        assert row["reopen_count"] == 0
+        assert row["note"] == "accepted"
+        assert row["resolved_at"] == skipped_at
+        attestation = row["resolution_attestation"]
+        assert attestation["kind"] == "manual"
+        assert attestation["text"] == "reviewed"
+
+    def test_reconcile_restore_keeps_genuine_reopen_count(self):
+        """A pre-existing reopen history is preserved; only the spurious
+        scan-merge bump is reverted."""
+        from desloppify.engine._state.merge_issues import upsert_issues
+
+        plan = empty_plan()
+        plan["skipped"] = {
+            "fp1": {
+                "issue_id": "fp1",
+                "kind": "false_positive",
+                "created_at": "2025-01-01T00:00:00+00:00",
+            },
+        }
+        issue = _issue("fp1", status="false_positive", detector="test_coverage")
+        issue.update(reopen_count=2, last_seen="old")
+        state = {"issues": {"fp1": issue}, "scan_count": 5}
+
+        upsert_issues(
+            state["issues"],
+            [_issue("fp1", detector="test_coverage")],
+            [],
+            "now",
+            lang="python",
+        )
+        assert state["issues"]["fp1"]["reopen_count"] == 3
+
+        reconcile_plan_after_scan(plan, state)
+        assert state["work_items"]["fp1"]["reopen_count"] == 2
+
 
 # ---------------------------------------------------------------------------
 # B2: Historical focus grouping
