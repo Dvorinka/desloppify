@@ -93,7 +93,7 @@ against fork HEAD `3a7735d` (v1.0). Verdicts:
 | #780 next --state loads wrong plan | TRACK | |
 | #779/#779 selected-dimension import requires unselected | TRACK | |
 | #772 Python dup detector parses string fixtures | DONE | AST-gated extraction |
-| #771 selftest suites treated as untested | PORT | partial — import edges fixed via #770; *_selftest coverage mapping still open |
+| #771 selftest suites treated as untested | DONE | *_selftest zone + naming convention |
 | #770/#769 Python orphan misses nested pkg/__main__ CLIs | DONE | source_dir roots + __main__ guard hook |
 | #761 TS body extraction stops in typed params | DONE | signature-brace tracking (ported #721, d5b770e5) |
 | #759 scan output/history disagree after FP adjudication | TRACK | |
