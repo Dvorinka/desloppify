@@ -106,6 +106,23 @@ examples:
         help="Language runtime option override (repeatable, e.g. --lang-opt roslyn_cmd='dotnet run ...')",
     )
     p_scan.add_argument(
+        "--diff",
+        type=str,
+        default=None,
+        metavar="BASE",
+        help=(
+            "PR review mode: annotate findings on base...HEAD changed lines "
+            "and report the strict-score delta (mechanical only, no LLM)."
+        ),
+    )
+    p_scan.add_argument(
+        "--annotations-json",
+        type=str,
+        default=None,
+        metavar="PATH",
+        help="With --diff: write machine-readable annotations JSON to PATH",
+    )
+    p_scan.add_argument(
         "--rescan",
         action="store_true",
         help=(
