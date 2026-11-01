@@ -97,7 +97,7 @@ against fork HEAD `3a7735d` (v1.0). Verdicts:
 | #770/#769 Python orphan misses nested pkg/__main__ CLIs | DONE | source_dir roots + __main__ guard hook |
 | #761 TS body extraction stops in typed params | DONE | signature-brace tracking (ported #721, d5b770e5) |
 | #759 scan output/history disagree after FP adjudication | TRACK | |
-| #758 in-file selftests reported untested | PORT | |
+| #758 in-file selftests reported untested | DONE | has_inline_tests: selftest fn + __main__/argv wiring |
 | #756 Rust orphan flags custom cargo bin target | DONE | _cargo_target_paths entry roots |
 | #755 Codex ENRICH nested subagents | SKIP | runner prompt |
 | #754 triage ORGANIZE contradicts requirements | TRACK | |
