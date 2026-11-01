@@ -35,7 +35,7 @@ against fork HEAD `3a7735d` (v1.0). Verdicts:
 | #908 blind review prompts leak prior subjective scores | TRACK | review pipeline |
 | #907 Python external-test mapping loses import roots | DONE | scan-root suffix match + windows sep normalization + potential label (a5d9059b) |
 | #906 skipped assessments select empty next queue | TRACK | |
-| #905 Python coverage misses importlib hyphenated CLIs | PORT | |
+| #905 Python coverage misses importlib hyphenated CLIs | DONE | spec_from_file_location/SourceFileLoader/load_source .py literals |
 | #903 C++ signature variance false compares | DONE | keyword reject + owner qualifier + type-normalized params |
 | #900 strategist history schema drift | TRACK | |
 | #898 cluster-name resolution vs member IDs | TRACK | |
