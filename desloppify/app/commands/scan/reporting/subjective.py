@@ -220,6 +220,11 @@ def subjective_integrity_followup(
         raw_integrity_state if isinstance(raw_integrity_state, dict) else {}
     )
     status = str(integrity_state.get("status", "")).strip().lower()
+    # The scorer's integrity policy is authoritative: when it reports the
+    # target-match safeguard as disabled, no dimension can be reset — so the
+    # at-target gaming notice must not appear (upstream #923).
+    if status == "disabled":
+        return None
     raw_target = integrity_state.get("target_score")
     target_display = coerce_target_score(raw_target, fallback=threshold_value)
     matched_keys = coerce_str_keys(integrity_state.get("matched_dimensions", []))

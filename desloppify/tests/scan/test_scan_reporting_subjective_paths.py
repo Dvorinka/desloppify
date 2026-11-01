@@ -87,6 +87,40 @@ def test_subjective_integrity_followup_handles_none_threshold_and_target():
     assert notice["target"] == 85.0
 
 
+def test_subjective_integrity_followup_silent_when_policy_disabled():
+    """status=disabled means no reset can happen — no gaming notice (#923)."""
+    notice = scan_reporting_dimensions_mod.subjective_integrity_followup(
+        {
+            "subjective_integrity": {
+                "status": "disabled",
+                "target_score": 90.0,
+                "matched_dimensions": [],
+                "reset_dimensions": [],
+            }
+        },
+        [
+            {
+                "name": "Naming quality",
+                "score": 90.0,
+                "strict": 90.0,
+                "failing": 0,
+                "placeholder": False,
+                "cli_keys": ["naming_quality"],
+            },
+            {
+                "name": "Logic clarity",
+                "score": 90.0,
+                "strict": 90.0,
+                "failing": 0,
+                "placeholder": False,
+                "cli_keys": ["logic_clarity"],
+            },
+        ],
+        threshold=90.0,
+    )
+    assert notice is None
+
+
 def test_show_subjective_paths_prioritizes_integrity_gap(monkeypatch, capsys):
     import desloppify.state as state_mod
 
