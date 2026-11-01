@@ -20,21 +20,21 @@ against fork HEAD `3a7735d` (v1.0). Verdicts:
 | #934 review defaults to missing src when scan_path null | DONE | get_default_scan_path falls back to root (fix g) |
 | #933 TS coverage/dep resolvers miss workspace exports | DONE | resolvers follow workspace exports (2b7120d1) |
 | #932 next recommends dead-useeffect autofix for README finding | SKIP | nudge wording |
-| #931 queued work auto-completes unrelated steps | TRACK | queue machinery |
-| #930 plan cluster add crashes on protected skip | TRACK | |
-| #929/#928 backlog duplicate IDs / repeats findings | TRACK | |
+| #931 queued work auto-completes unrelated steps | DONE | step refs stay pending while open in state (6871a47e) |
+| #930 plan cluster add crashes on protected skip | DONE | add_to_cluster refuses skipped ids upfront (6871a47e) |
+| #929/#928 backlog duplicate IDs / repeats findings | DONE | backlog dedupes canonical IDs across partitions (6871a47e) |
 | #927 move misses imports with explicit TS extensions | DONE | specifier-form variants in move (e4fd165a) |
 | #923 CLI threatens target-match resets though policy disabled | DONE | fixed here — threat text aligned with disabled policy (fix e) |
 | #922 plan resolve exits 0 on queue-order guard reject | DONE | CommandError exit 1 + done-log moved after guard |
 | #921 test-coverage summary labels LOC potential wrong | SKIP | display |
-| #919 cluster resolve rejects cluster shown by next | TRACK | |
+| #919 cluster resolve rejects cluster shown by next | DONE | guard mirrors next's cluster-focus view (6871a47e) |
 | #918/#917 Windows triage UTF-8 / npm codex.cmd quoting | SKIP | Windows runner |
 | #916 relative scan roots → relative Bandit exclusions | DONE | ported #897+#904 absolute exclusion dirs |
 | #915 Python dynamic import discovery ignores exclusions | DONE | find_py_files now used |
 | #909 Windows JS dep graph zero import edges | SKIP | Windows tree-sitter |
 | #908 blind review prompts leak prior subjective scores | TRACK | review pipeline |
 | #907 Python external-test mapping loses import roots | DONE | scan-root suffix match + windows sep normalization + potential label (a5d9059b) |
-| #906 skipped assessments select empty next queue | TRACK | |
+| #906 skipped assessments select empty next queue | DONE | skipped filtered from postflight partitions (6871a47e) |
 | #905 Python coverage misses importlib hyphenated CLIs | DONE | spec_from_file_location/SourceFileLoader/load_source .py literals |
 | #903 C++ signature variance false compares | DONE | keyword reject + owner qualifier + type-normalized params |
 | #900 strategist history schema drift | TRACK | |
@@ -90,7 +90,7 @@ against fork HEAD `3a7735d` (v1.0). Verdicts:
 | #786 security detector FPs for static logs/JSON parsing | DONE | payload-aware log_sensitive + schema-validated json_parse |
 | #785 scan persists to wrong language state on exclusion change | TRACK | |
 | #784 reflect permits defer but validation rejects it | TRACK | |
-| #780 next --state loads wrong plan | TRACK | |
+| #780 next --state loads wrong plan | DONE | sibling plan via plan_path_for_state; backlog same (909d1d3a) |
 | #779/#779 selected-dimension import requires unselected | TRACK | |
 | #772 Python dup detector parses string fixtures | DONE | AST-gated extraction |
 | #771 selftest suites treated as untested | DONE | *_selftest zone + naming convention |
@@ -110,7 +110,7 @@ against fork HEAD `3a7735d` (v1.0). Verdicts:
 | #715 tree-sitter dep graph drops relative + CJS edges | DONE | ported #874+#920 — canonical compare + require() query |
 | #709 next_lint removed in Next.js 16 | DONE | cmd_resolver → eslint direct on next>=16 (d8267ca0) |
 | #705 tsconfig paths aliases unresolved → orphan FPs | DONE | ported #924+#925 (36dfaf86, 324811f2) |
-| #701 plan resolve auto-completes unrelated steps | TRACK | |
+| #701 plan resolve auto-completes unrelated steps | DONE | same root as #931 (6871a47e) |
 | #700 Swift Xcode misdetected as TS | TRACK | detection |
 | #678 Django live modules reported dead | DONE | framework conventions |
 | #675 cluster --depends-on replaces not appends | DONE | append+dedupe (ports PR #708) |

@@ -39,14 +39,32 @@ Committed on maint/continuation:
 - #758 has_inline_tests: selftest fn + __main__/argv wiring = coverage.
   3a1125af.
 
+## Session 2026-11-01 (IV) — review cost modes + TRACK batch
+Committed on maint/continuation:
+- feat(review): `--batch-mode grouped|single` for `review --run-batches`
+  — collapse ~20 per-dimension subagent runs to ~9 (evidence-collector
+  groups) or 1. run_summary.json records batch_mode; --import-run
+  replays grouping. Prompt pluralizes multi-dim batches. 20214ae7.
+- #906 skipped assessments filtered from postflight partitions,
+  #919 resolve guard mirrors cluster-focus view, #928/#929 backlog
+  dedupes canonical ids, #930 cluster add refuses skipped ids,
+  #931/#701 auto_complete_steps only completes when refs absent from
+  plan AND not open in state. 6871a47e.
+- #780 next/backlog --state load sibling plan via plan_path_for_state.
+  909d1d3a.
+
 ## Remaining PORT rows
-- TRACK (61→58): deep queue/plan machinery bugs — started: #674, #675,
-  #922 done (exit-code/append fixes). Rest untouched.
+- TRACK (~50 left): machinery bugs — next likely: #855 stale reopened
+  metadata, #784 reflect defer vs validation, #863 strict score vs
+  auto_resolved (design decision — penalizes scan-confirmed resolutions;
+  verify intent before changing), #872 unchanged-finding re-review loop
+  (intentional per upstream test — document, don't fix), #727/#700
+  lang misdetect (cxx>csharp excludes + sln/slnx/csproj markers; Xcode
+  as TS). Then strategist/triage-prompt cluster.
 
 ## Immediate next work
-1. Push maint/continuation; refresh PR #1 body with final delta.
-2. TRACK queue when owner wants machinery work.
-3. CHANGELOG is current; PORTS all rows resolved to DONE/SKIP/TRACK.
+1. TRACK queue remainder per above ordering.
+2. Refresh PR #1 body when queue drains further.
 
 ## Learned pitfalls
 - `desloppify/data/global/SKILL.md` must equal `docs/SKILL.md` (bundled-sync test).

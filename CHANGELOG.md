@@ -17,9 +17,24 @@ Upstream issue/PR triage lives in [PORTS.md](PORTS.md).
   `--annotations-json <path>` for CI consumers. Mechanical only, no LLM.
 - `action.yml` + `examples/pr-review.yml` — reusable composite action and
   example workflow for desloppify-as-PR-reviewer.
+- `review --run-batches --batch-mode {per-dimension,grouped,single}` —
+  subagent review cost control. Default `per-dimension` runs one agent per
+  dimension (~20 runs); `grouped` merges dimensions sharing a holistic
+  evidence collector (~9 runs); `single` runs all dimensions in one agent
+  (cheapest, shallowest). `run_summary.json` records the mode so
+  `--import-run` replays the same grouping.
 
 ### Fixed
 
+- Plan/queue machinery (upstream #906, #919, #928/#929, #930, #931/#701):
+  skipped assessments no longer select a postflight phase that then empties
+  the queue; the resolve queue-order guard mirrors `next`'s cluster-focus
+  view; `backlog` dedupes canonical IDs that surfaced in multiple
+  partitions; `plan cluster add` refuses skipped IDs instead of crashing in
+  validation; `auto_complete_steps` only completes a step when its
+  referenced findings are absent from the plan AND not still open in state.
+- `next --state`/`backlog --state` now load the sibling plan for the given
+  state path instead of the default project plan (upstream #780).
 - Go `unused` detector no longer assumes the last import-path segment is the
   package identifier — versioned modules (`.../v8`), `gopkg.in` paths
   (`yaml.v3`), blank and dot imports handled; undeterminable names no longer
