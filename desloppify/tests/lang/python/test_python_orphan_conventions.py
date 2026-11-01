@@ -122,3 +122,31 @@ def real_helper(x):
     names = [fn.name for fn in extract_py_functions(str(mod))]
     assert "_write" not in names
     assert "real_helper" in names
+
+
+def test_mixin_contract_excludes_inherited_methods(tmp_path):
+    from desloppify.languages.python.detectors.coupling_contracts import (
+        detect_implicit_mixin_contracts,
+    )
+
+    (tmp_path / "folders.py").write_text(
+        '''
+class FolderBaseMixin:
+    def fetch_node(self):
+        return 1
+    def normalize_node(self):
+        return 2
+    def make_client(self):
+        return 3
+
+class FolderChildrenMixin(FolderBaseMixin):
+    def list_children(self):
+        return self.fetch_node() + self.normalize_node() + self.make_client()
+
+class HostDependentMixin:
+    def run(self):
+        return self.provided_a() + self.provided_b() + self.provided_c()
+'''
+    )
+    entries, _ = detect_implicit_mixin_contracts(tmp_path)
+    assert [e["class"] for e in entries] == ["HostDependentMixin"]
