@@ -6,6 +6,9 @@ import ast
 import logging
 from pathlib import Path
 
+from desloppify.base.discovery.paths import get_project_root
+from desloppify.base.discovery.source import find_py_files
+
 from .deps_resolution import resolve_absolute_import
 
 logger = logging.getLogger(__name__)
@@ -15,9 +18,12 @@ def find_python_dynamic_imports(path: Path, extensions: list[str]) -> set[str]:
     """Find module specifiers referenced by ``importlib.import_module`` calls."""
     del extensions
     targets: set[str] = set()
-    for py_file in path.rglob("*.py"):
+    for py_file in find_py_files(path):
+        py_path = Path(py_file)
+        if not py_path.is_absolute():
+            py_path = get_project_root() / py_path
         try:
-            tree = ast.parse(py_file.read_text(), filename=str(py_file))
+            tree = ast.parse(py_path.read_text(), filename=str(py_path))
         except (SyntaxError, UnicodeDecodeError, OSError) as exc:
             logger.debug(
                 "Skipping unreadable file %s in dynamic import scan: %s",

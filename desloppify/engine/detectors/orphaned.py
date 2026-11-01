@@ -104,6 +104,114 @@ def _is_nextjs_convention_entry(rel_path: str) -> bool:
     )
 
 
+# ---------------------------------------------------------------------------
+# Python framework conventions (Django, Alembic)
+# ---------------------------------------------------------------------------
+
+# Module names Django autodiscovers or loads by dotted-string reference.
+_DJANGO_CONVENTION_STEMS: set[str] = {
+    "admin",
+    "apps",
+    "middleware",
+    "models",
+    "tasks",
+    "routers",
+    "context_processors",
+    "signals",
+    "receivers",
+    "views",
+    "forms",
+    "serializers",
+    "permissions",
+    "settings",
+    "wsgi",
+    "asgi",
+    "manage",
+    "conftest",
+}
+
+
+def _django_project_root(directory: Path, cache: dict[Path, Path | None]) -> Path | None:
+    """Find the nearest ancestor holding manage.py without crossing a package root."""
+    visited = []
+    current = directory
+    while current not in cache:
+        visited.append(current)
+        if (current / "manage.py").is_file():
+            root = current
+            break
+        if (current / "pyproject.toml").is_file() or current.parent == current:
+            root = None
+            break
+        current = current.parent
+    else:
+        root = cache[current]
+    for parent in visited:
+        cache[parent] = root
+    return root
+
+
+def _is_django_convention_entry(rel_path: str) -> bool:
+    """Whether *rel_path* under a Django root is a framework-loaded module."""
+    p = Path(rel_path)
+    if p.suffix != ".py":
+        return False
+    stem = p.stem
+    if "templatetags" in p.parts or "migrations" in p.parts or "management" in p.parts:
+        return True
+    if stem == "urls" or stem.startswith("urls_") or stem.endswith("_urls"):
+        return True
+    return stem in _DJANGO_CONVENTION_STEMS
+
+
+def _alembic_script_location(root: Path) -> Path | None:
+    """Read script_location from alembic.ini at *root*, if present."""
+    ini = root / "alembic.ini"
+    if not ini.is_file():
+        return None
+    try:
+        text = ini.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    match = re.search(r"(?m)^\s*script_location\s*=\s*(\S+)", text)
+    if not match:
+        return root / "alembic"
+    return (root / match.group(1).replace("%(here)s", ".")).resolve()
+
+
+def _alembic_project_root(directory: Path, cache: dict[Path, Path | None]) -> Path | None:
+    visited = []
+    current = directory
+    while current not in cache:
+        visited.append(current)
+        if (current / "alembic.ini").is_file():
+            root = current
+            break
+        if (current / "pyproject.toml").is_file() or current.parent == current:
+            root = None
+            break
+        current = current.parent
+    else:
+        root = cache[current]
+    for parent in visited:
+        cache[parent] = root
+    return root
+
+
+def _is_alembic_runtime_file(source: Path, project_root: Path) -> bool:
+    """Whether *source* is loaded by Alembic rather than ordinary imports."""
+    location = _alembic_script_location(project_root)
+    if location is None:
+        return False
+    try:
+        relative = source.relative_to(location)
+    except ValueError:
+        return False
+    if relative.name == "env.py" and len(relative.parts) == 1:
+        return True
+    return len(relative.parts) == 2 and relative.parts[0] == "versions" and source.suffix == ".py"
+
+
 @dataclass
 class OrphanedDetectionOptions:
     """Optional behavior flags for orphaned-file detection."""
@@ -112,6 +220,7 @@ class OrphanedDetectionOptions:
     extra_barrel_names: set[str] | None = None
     dynamic_import_finder: Callable[[Path, list[str]], set[str]] | None = None
     alias_resolver: Callable[[str], str] | None = None
+    entry_point_detector: Callable[[str], bool] | None = None
     detect_frameworks: bool = True
 
 
@@ -164,6 +273,8 @@ def detect_orphaned_files(
 
     # Resolve framework ownership per file for monorepos and subtree scans.
     nextjs_roots: dict[Path, Path | None] = {}
+    django_roots: dict[Path, Path | None] = {}
+    alembic_roots: dict[Path, Path | None] = {}
 
     dynamic_targets = (
         dynamic_import_finder(path, extensions) if dynamic_import_finder else set()
@@ -184,11 +295,25 @@ def detect_orphaned_files(
         if basename in all_barrel_names:
             continue
 
+        if resolved_options.entry_point_detector and resolved_options.entry_point_detector(
+            filepath
+        ):
+            continue
+
         if resolved_options.detect_frameworks:
             source = Path(resolve_path(filepath))
             project_root = _nextjs_project_root(source.parent, nextjs_roots)
             if project_root and _is_nextjs_convention_entry(str(source.relative_to(project_root))):
                 continue
+            if source.suffix == ".py":
+                django_root = _django_project_root(source.parent, django_roots)
+                if django_root and _is_django_convention_entry(
+                    str(source.relative_to(django_root))
+                ):
+                    continue
+                alembic_root = _alembic_project_root(source.parent, alembic_roots)
+                if alembic_root and _is_alembic_runtime_file(source.resolve(), alembic_root):
+                    continue
 
         if dynamic_targets and _is_dynamically_imported(
             filepath, dynamic_targets, alias_resolver
