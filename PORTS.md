@@ -50,14 +50,14 @@ against fork HEAD `3a7735d` (v1.0). Verdicts:
 | #883 strategist recent_investment counts lifetime | TRACK | |
 | #882 repeated strategist identifiers erase evidence | TRACK | |
 | #873 duplicate detector compares nested callbacks to container | DONE | already fixed — overlapping spans skipped (4fa23bba) |
-| #872 accepting unchanged findings schedules another review | TRACK | |
+| #872 accepting unchanged findings schedules another review | DONE | 44b49ecc — intentional; documented in SKILL.md |
 | #867 cppcheck batching → cross-batch unused FPs | DONE (class) | covered by ported #869 whole-program pass |
 | #866 C++ test import mapping behind headers | DONE | covered header promotes same-stem impl |
-| #863 strict score penalizes auto_resolved | TRACK | scoring semantics |
+| #863 strict score penalizes auto_resolved | DONE | c8be04ab — intentional for inferred; file_deleted/zone_policy exempted (PR #751 port) |
 | #859 C++ orphan detector misclassifies Unreal modules | SKIP | Unreal-specific |
 | #858 TS coverage transitive_only for rendered components | DONE | ~/ + .js specifier resolver parity (9c7767fe); memo-ri repro unrecoverable (repo deleted) — gap proven via synthetic repro |
 | #856 codex --scan-after-import blocked by new queue | DONE (class) | `--rescan` is the sanctioned bypass (fix f) |
-| #855 plan skip restoration leaves stale reopened metadata | TRACK | |
+| #855 plan skip restoration leaves stale reopened metadata | DONE | 52322257 |
 | #854 lru_cache_mutable flags immutable ctor globals | DONE | |
 | #853 Python unused detector silent zero without Ruff | DONE | missing-tool coverage |
 | #849 Python orphan misses Alembic runtime modules | DONE | |
@@ -89,7 +89,7 @@ against fork HEAD `3a7735d` (v1.0). Verdicts:
 | #787 recovered queue item requests scan the guard rejects | DONE (class) | `--rescan` (fix f) |
 | #786 security detector FPs for static logs/JSON parsing | DONE | payload-aware log_sensitive + schema-validated json_parse |
 | #785 scan persists to wrong language state on exclusion change | TRACK | |
-| #784 reflect permits defer but validation rejects it | TRACK | |
+| #784 reflect permits defer but validation rejects it | DONE | 8e893135 — upstream PR #637 port |
 | #780 next --state loads wrong plan | DONE | sibling plan via plan_path_for_state; backlog same (909d1d3a) |
 | #779/#779 selected-dimension import requires unselected | TRACK | |
 | #772 Python dup detector parses string fixtures | DONE | AST-gated extraction |
@@ -111,7 +111,7 @@ against fork HEAD `3a7735d` (v1.0). Verdicts:
 | #709 next_lint removed in Next.js 16 | DONE | cmd_resolver → eslint direct on next>=16 (d8267ca0) |
 | #705 tsconfig paths aliases unresolved → orphan FPs | DONE | ported #924+#925 (36dfaf86, 324811f2) |
 | #701 plan resolve auto-completes unrelated steps | DONE | same root as #931 (6871a47e) |
-| #700 Swift Xcode misdetected as TS | TRACK | detection |
+| #700 Swift Xcode misdetected as TS | DONE | b71152c1 — zero-reviewable-file policy: loud warn + no subjective queue |
 | #678 Django live modules reported dead | DONE | framework conventions |
 | #675 cluster --depends-on replaces not appends | DONE | append+dedupe (ports PR #708) |
 | #674 plan skip exits 0 on zero-match | DONE | CommandError exit 1 on skip/unskip/backlog (ports PR #706) |
