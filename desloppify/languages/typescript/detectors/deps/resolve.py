@@ -53,7 +53,7 @@ def find_tsconfig_root(scan_path: Path, project_root: Path) -> Path:
 
 def parse_tsconfig_paths(project_root: Path) -> dict[str, str]:
     """Parse tsconfig paths from disk. Internal — use ``load_tsconfig_paths``."""
-    fallback = {"@/": "src/"}
+    fallback = {"@/": "src/", "~/": "src/"}
 
     for name in ("tsconfig.json", "tsconfig.app.json", "jsconfig.json"):
         config_path = project_root / name
@@ -70,7 +70,9 @@ def parse_tsconfig_paths(project_root: Path) -> dict[str, str]:
             continue
         result = extract_paths(data, project_root)
         if result is not None:
-            return result
+            # Undeclared @/ ~/ prefixes follow the src/ convention; declared
+            # mappings always win.
+            return {**fallback, **result}
         extends = data.get("extends")
         if isinstance(extends, str) and not extends.startswith("@"):
             parent_path = (config_path.parent / extends).resolve()
@@ -81,7 +83,7 @@ def parse_tsconfig_paths(project_root: Path) -> dict[str, str]:
                     return fallback
                 parent_result = extract_paths(parent_data, parent_path.parent)
                 if parent_result is not None:
-                    return parent_result
+                    return {**fallback, **parent_result}
         return fallback
 
     return fallback

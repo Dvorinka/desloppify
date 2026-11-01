@@ -12,6 +12,7 @@ from desloppify.base.output.fallbacks import log_best_effort_failure
 from desloppify.base.text_utils import strip_c_style_comments
 from desloppify.languages.typescript.detectors.deps.resolve import (
     find_tsconfig_root,
+    iter_resolve_candidates,
     load_tsconfig_paths,
     resolve_alias,
     resolve_package_specifier,
@@ -73,7 +74,6 @@ EXPECT_COMPARISON_RE = re.compile(
 EXPECT_TO_BE_DEFINED_RE = re.compile(r"""\.toBeDefined\s*\(""")
 
 BARREL_BASENAMES = {"index.ts", "index.tsx"}
-_TS_EXTENSIONS = ["", ".ts", ".tsx", "/index.ts", "/index.tsx"]
 logger = logging.getLogger(__name__)
 
 
@@ -196,15 +196,15 @@ def resolve_import_spec(
             return None
 
     for base in bases:
-        for ext in _TS_EXTENSIONS:
-            candidate = str(Path(str(base) + ext))
+        for candidate_path in iter_resolve_candidates(base):
+            candidate = str(candidate_path)
             if candidate in production_files:
                 return candidate
             rel_candidate = _relative_if_under_root(candidate)
             if rel_candidate in production_files:
                 return rel_candidate
             try:
-                resolved = str(Path(str(base) + ext).resolve())
+                resolved = str(candidate_path.resolve())
                 if resolved in production_files:
                     return resolved
                 rel_resolved = _relative_if_under_root(resolved)

@@ -272,6 +272,55 @@ class TestResolveTsImport:
         result = _resolve_import("react", "/test.ts", set(), "typescript")
         assert result is None
 
+    def test_js_specifier_resolves_tsx_source(self, tmp_path):
+        """#858: NodeNext `./x.js` specifiers resolve to `x.tsx` sources."""
+        prod = _write_file(tmp_path, "src/components/Profile.tsx", "")
+        test = _write_file(tmp_path, "src/test/interactions.test.tsx", "")
+        result = _resolve_import(
+            "../components/Profile.js", test, {prod}, "typescript"
+        )
+        assert result == prod
+
+    def test_tilde_alias_with_tsconfig_missing_mapping(self, tmp_path, monkeypatch):
+        """#858: `~/x` resolves via src/ convention when tsconfig paths omit `~`."""
+        monkeypatch.setattr(ts_cov, "get_project_root", lambda: tmp_path)
+        _write_file(
+            tmp_path,
+            "tsconfig.json",
+            json.dumps({"compilerOptions": {"paths": {"@/*": ["./src/*"]}}}),
+        )
+        prod = _write_file(tmp_path, "src/components/Profile.tsx", "")
+        test = _write_file(tmp_path, "src/test/interactions.test.tsx", "")
+        result = _resolve_import(
+            "~/components/Profile", test, {prod}, "typescript"
+        )
+        assert result == prod
+
+    def test_import_mapping_credits_tilde_and_js_specs(
+        self, tmp_path, monkeypatch
+    ):
+        """#858: ~/ and .js test imports count as direct coverage."""
+        monkeypatch.setattr(ts_cov, "get_project_root", lambda: tmp_path)
+        _write_file(
+            tmp_path,
+            "tsconfig.json",
+            json.dumps({"compilerOptions": {"paths": {"@/*": ["./src/*"]}}}),
+        )
+        profile = _write_file(
+            tmp_path, "src/components/Profile.tsx", "export const P = 1;\n"
+        )
+        widget = _write_file(
+            tmp_path, "src/components/Widget.tsx", "export const W = 1;\n"
+        )
+        test = _write_file(
+            tmp_path,
+            "src/test/interactions.test.tsx",
+            "import { P } from '~/components/Profile';\n"
+            "const loader = () => import('../components/Widget.js');\n",
+        )
+        result = import_based_mapping({}, {test}, {profile, widget}, "typescript")
+        assert result == {profile, widget}
+
 
 # ── _resolve_barrel_reexports ────────────────────────────
 

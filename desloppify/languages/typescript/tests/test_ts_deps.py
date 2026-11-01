@@ -127,6 +127,26 @@ class TestBuildDepGraph:
         helpers_key = str((tmp_path / "helpers.ts").resolve())
         assert helpers_key in graph[app_key]["imports"]
 
+    def test_tilde_specifier_resolves_via_src_convention(self, tmp_path):
+        """#858: `~/x` resolves to `src/x` when no tsconfig paths declare it."""
+
+        _write(
+            tmp_path,
+            "tsconfig.json",
+            json.dumps({"compilerOptions": {"paths": {"@/*": ["./src/*"]}}}),
+        )
+        _write(tmp_path, "src/components/Profile.tsx", "export const P = 1;\n")
+        _write(
+            tmp_path,
+            "src/test/interactions.test.tsx",
+            "import { P } from '~/components/Profile';\n",
+        )
+
+        graph = deps_detector_mod.build_dep_graph(tmp_path)
+        test_key = str((tmp_path / "src/test/interactions.test.tsx").resolve())
+        profile_key = str((tmp_path / "src/components/Profile.tsx").resolve())
+        assert profile_key in graph[test_key]["imports"]
+
     def test_index_file_resolution(self, tmp_path):
         """Graph resolves directory imports to index.ts files."""
 
@@ -337,7 +357,7 @@ class TestTsconfigPaths:
             json.dumps({"compilerOptions": {"paths": {"@/*": ["./src/*"]}}}),
         )
         paths = deps_detector_mod._load_tsconfig_paths(tmp_path)
-        assert paths == {"@/": "src/"}
+        assert paths == {"@/": "src/", "~/": "src/"}
 
     def test_multiple_aliases(self, tmp_path):
         """Multiple path aliases all resolve correctly."""
@@ -398,13 +418,13 @@ class TestTsconfigPaths:
     def test_missing_fallback(self, tmp_path):
         """No tsconfig at all returns @/ → src/ fallback."""
         paths = deps_detector_mod._load_tsconfig_paths(tmp_path)
-        assert paths == {"@/": "src/"}
+        assert paths == {"@/": "src/", "~/": "src/"}
 
     def test_malformed_json(self, tmp_path):
         """Malformed JSON gracefully falls back."""
         _write(tmp_path, "tsconfig.json", "{ invalid json !!!")
         paths = deps_detector_mod._load_tsconfig_paths(tmp_path)
-        assert paths == {"@/": "src/"}
+        assert paths == {"@/": "src/", "~/": "src/"}
 
     def test_tsconfig_no_paths_field(self, tmp_path):
         """tsconfig exists but has no paths field → fallback."""
@@ -412,7 +432,7 @@ class TestTsconfigPaths:
             tmp_path, "tsconfig.json", json.dumps({"compilerOptions": {"strict": True}})
         )
         paths = deps_detector_mod._load_tsconfig_paths(tmp_path)
-        assert paths == {"@/": "src/"}
+        assert paths == {"@/": "src/", "~/": "src/"}
 
     def test_alias_resolver_uses_tsconfig(self, tmp_path):
         """deps_detector_mod.ts_alias_resolver() respects tsconfig paths."""
@@ -473,7 +493,7 @@ class TestTsconfigPaths:
             ),
         )
         paths = deps_detector_mod._load_tsconfig_paths(tmp_path)
-        assert paths == {"@/": "src/"}
+        assert paths == {"@/": "src/", "~/": "src/"}
 
 
 # ── Framework file support ──────────────────────────────────────
