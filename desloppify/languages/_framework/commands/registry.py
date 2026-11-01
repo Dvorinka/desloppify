@@ -169,17 +169,21 @@ def make_cmd_orphaned(
     extra_entry_patterns: list[str],
     extra_barrel_names: set[str],
     module_name: str | None = None,
+    entry_patterns_fn: Callable[[Path], list[str]] | None = None,
 ) -> Callable[[argparse.Namespace], None]:
     """Build an orphaned-file command for language-specific roots/barrels."""
 
     def cmd_orphaned(args: argparse.Namespace) -> None:
         graph = build_dep_graph_fn(Path(args.path))
+        patterns = list(extra_entry_patterns)
+        if entry_patterns_fn is not None:
+            patterns.extend(entry_patterns_fn(Path(args.path)))
         entries, _ = detect_orphaned_files(
             Path(args.path),
             graph,
             extensions=extensions,
             options=OrphanedDetectionOptions(
-                extra_entry_patterns=extra_entry_patterns,
+                extra_entry_patterns=patterns,
                 extra_barrel_names=extra_barrel_names,
             ),
         )

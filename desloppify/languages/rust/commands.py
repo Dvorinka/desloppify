@@ -37,6 +37,7 @@ from desloppify.languages.rust.detectors import (
     detect_thread_safety_contracts,
     detect_unsafe_api_usage,
 )
+from desloppify.languages.rust.detectors._shared import _cargo_target_paths
 from desloppify.languages.rust.detectors.deps import build_dep_graph
 from desloppify.languages.rust.extractors import extract_functions, find_rust_files
 from desloppify.languages.rust.phases import (
@@ -102,6 +103,7 @@ cmd_orphaned = make_cmd_orphaned(
     ],
     extra_barrel_names={"lib.rs"},
     module_name=__name__,
+    entry_patterns_fn=_cargo_target_paths,
 )
 cmd_dupes = make_cmd_dupes(extract_functions_fn=extract_functions, module_name=__name__)
 cmd_smells = make_cmd_smells(detect_smells, module_name=__name__)

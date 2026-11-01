@@ -41,6 +41,7 @@ from desloppify.languages.rust.detectors import (
     detect_thread_safety_contracts,
     detect_unsafe_api_usage,
 )
+from desloppify.languages.rust.detectors._shared import _cargo_target_paths
 from desloppify.languages.rust.detectors.deps import build_dep_graph
 from desloppify.languages.rust.tools import (
     CARGO_ERROR_CMD as RUST_CHECK_CMD,
@@ -147,7 +148,10 @@ def phase_coupling(path: Path, lang: LangRuntimeContract) -> tuple[list[Issue], 
         graph,
         extensions=lang.extensions,
         options=OrphanedDetectionOptions(
-            extra_entry_patterns=lang.entry_patterns,
+            extra_entry_patterns=[
+                *lang.entry_patterns,
+                *_cargo_target_paths(path),
+            ],
             extra_barrel_names=lang.barrel_names,
         ),
     )
