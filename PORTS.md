@@ -114,7 +114,7 @@ against fork HEAD `3a7735d` (v1.0). Verdicts:
 | #700 Swift Xcode misdetected as TS | TRACK | detection |
 | #678 Django live modules reported dead | DONE | framework conventions |
 | #675 cluster --depends-on replaces not appends | TRACK | (closed PR #708 exists) |
-| #674 plan skip exits 0 on zero-match | TRACK | (closed PR #706 exists) |
+| #674 plan skip exits 0 on zero-match | DONE | CommandError exit 1 on skip/unskip/backlog (ports PR #706) |
 | #665 importer_count misses @/ aliases | DONE | ported #924+#925 — per-importer tsconfig |
 | #664 Python scan parses excluded virtualenv in coupling | DONE | same fix as #915 — exclusion-aware finder |
 | #643 Go flat-dir counts _test.go as production | DONE | flat_dirs_filter excludes *_test.go |
