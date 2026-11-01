@@ -33,7 +33,7 @@ against fork HEAD `3a7735d` (v1.0). Verdicts:
 | #915 Python dynamic import discovery ignores exclusions | DONE | find_py_files now used |
 | #909 Windows JS dep graph zero import edges | SKIP | Windows tree-sitter |
 | #908 blind review prompts leak prior subjective scores | TRACK | review pipeline |
-| #907 Python external-test mapping loses import roots | PORT | coverage mapping |
+| #907 Python external-test mapping loses import roots | DONE | scan-root suffix match + windows sep normalization + potential label (a5d9059b) |
 | #906 skipped assessments select empty next queue | TRACK | |
 | #905 Python coverage misses importlib hyphenated CLIs | PORT | |
 | #903 C++ signature variance false compares | DONE | keyword reject + owner qualifier + type-normalized params |
