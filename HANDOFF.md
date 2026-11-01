@@ -40,7 +40,8 @@ Committed on maint/continuation:
   3a1125af.
 
 ## Remaining PORT rows
-- TRACK (61): deep queue/plan machinery bugs — untouched by design.
+- TRACK (61→58): deep queue/plan machinery bugs — started: #674, #675,
+  #922 done (exit-code/append fixes). Rest untouched.
 
 ## Immediate next work
 1. Push maint/continuation; refresh PR #1 body with final delta.
