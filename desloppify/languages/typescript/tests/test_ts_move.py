@@ -41,3 +41,46 @@ class TestMoveTsHelpers:
         assert relative == "./utils"
         assert not relative.endswith("/index")
         assert alias is None
+
+
+class TestFormReplacements:
+    def test_explicit_ts_extension_preserved(self):
+        content = "import type { V } from './types.ts';\n"
+        repl = ts_move._form_replacements(
+            content, "./types", "./group/types",
+            old_is_index=False, new_is_index=False,
+        )
+        assert repl == [("'./types.ts'", "'./group/types.ts'")]
+
+    def test_emitted_js_specifier_rewritten(self):
+        content = 'import { V } from "./types.js";\n'
+        repl = ts_move._form_replacements(
+            content, "./types", "./group/types",
+            old_is_index=False, new_is_index=False,
+        )
+        assert repl == [('"./types.js"', '"./group/types.js"')]
+
+    def test_index_spelling_not_matched_as_sibling_file(self):
+        # ./utils.ts names a sibling file, not ./utils/index.ts — leave it.
+        content = "import { u } from './utils.ts';\n"
+        repl = ts_move._form_replacements(
+            content, "./utils", "./lib/utils",
+            old_is_index=True, new_is_index=True,
+        )
+        assert repl == []
+
+    def test_index_form_preserved(self):
+        content = "import { u } from './utils/index';\n"
+        repl = ts_move._form_replacements(
+            content, "./utils", "./lib/utils",
+            old_is_index=True, new_is_index=True,
+        )
+        assert repl == [("'./utils/index'", "'./lib/utils/index'")]
+
+    def test_extensionless_still_matched(self):
+        content = "import { V } from './types';\n"
+        repl = ts_move._form_replacements(
+            content, "./types", "./group/types",
+            old_is_index=False, new_is_index=False,
+        )
+        assert repl == [("'./types'", "'./group/types'")]
