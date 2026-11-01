@@ -40,8 +40,8 @@ against fork HEAD `3a7735d` (v1.0). Verdicts:
 | #900 strategist history schema drift | TRACK | |
 | #898 cluster-name resolution vs member IDs | TRACK | |
 | #894 (closed) scan reopens adjudicated findings | DONE upstream | |
-| #893 C# inferred property receivers → transitive_only | PORT | csharp detector |
-| #892 C# custom test runners → no_tests | PORT | |
+| #893 C# inferred property receivers → transitive_only | DONE | parse_member_bindings receiver edges |
+| #892 C# custom test runners → no_tests | DONE | "unknown" quality + broader assert spellings |
 | #888 triage step-count / queue deadlock | TRACK | |
 | #887 Go scanner invokes removed golangci-lint v1 flag | DONE | cmd_fn picks v2 flag by installed major |
 | #886 Windows Codex batch quoting/locale | SKIP | |
@@ -105,7 +105,7 @@ against fork HEAD `3a7735d` (v1.0). Verdicts:
 | #746 Python src-layout imports orphaned at root scan | DONE | src/ resolution root |
 | #728 bandit not registered under [full] extras | DONE | module-importable bandit check (ported #762) |
 | #727 auto-detect cxx over csharp via ignores | TRACK | detection |
-| #726/#683 C# namespace co-membership as import edge | PORT | csharp graph |
+| #726/#683 C# namespace co-membership as import edge | DONE | co-membership via identifiers (#890) + FQ-ref edges |
 | #717/#716/#714 Windows decoding/executable/npx | SKIP | Windows |
 | #715 tree-sitter dep graph drops relative + CJS edges | DONE | ported #874+#920 — canonical compare + require() query |
 | #709 next_lint removed in Next.js 16 | DONE | cmd_resolver → eslint direct on next>=16 (d8267ca0) |
