@@ -1267,3 +1267,47 @@ class TestPythonSelftestConvention:
             "def test_flow():\n    assert tools.backlog_flow.run() is None\n",
         )
         assert import_based_mapping({}, {test}, {prod}, "python") == {prod}
+
+
+class TestPythonInlineSelftests:
+    def test_main_guarded_selftest_counts_as_inline_coverage(self, tmp_path):
+        """#758: --selftest entry point + check function = inline tested."""
+        prod = _write_file(
+            tmp_path,
+            "tool.py",
+            "import sys\n"
+            "def normalize(value):\n    return value.strip().casefold()\n"
+            "def selftest():\n"
+            "    assert normalize(' A ') == 'a'\n"
+            'if __name__ == "__main__":\n'
+            '    if "--selftest" in sys.argv:\n'
+            "        raise SystemExit(selftest())\n"
+            + "# filler\n" * 15,
+        )
+        zone_map = _make_zone_map([prod])
+        entries, _ = detect_test_coverage({}, zone_map, "python")
+        untested = [
+            e
+            for e in entries
+            if e.get("detail", {}).get("kind")
+            in ("untested_module", "untested_critical")
+        ]
+        assert untested == []
+
+    def test_bare_selftest_without_entrypoint_stays_untested(self, tmp_path):
+        """#758: a def selftest with no __main__ wiring proves nothing."""
+        prod = _write_file(
+            tmp_path,
+            "tool.py",
+            "def normalize(value):\n    return value.strip().casefold()\n"
+            "def selftest():\n"
+            "    assert normalize(' A ') == 'a'\n"
+            + "# filler\n" * 15,
+        )
+        zone_map = _make_zone_map([prod])
+        entries, _ = detect_test_coverage({}, zone_map, "python")
+        assert any(
+            e.get("detail", {}).get("kind")
+            in ("untested_module", "untested_critical")
+            for e in entries
+        )

@@ -46,6 +46,17 @@ BARREL_BASENAMES: set[str] = set()
 
 # Common source layout prefixes for src-layout projects (PEP 621).
 _SRC_PREFIXES = ("src/",)
+_MAIN_GUARD_RE = re.compile(
+    r"if\s+__name__\s*==\s*[\"']__main__[\"']"
+)
+_SELFTEST_DEF_RE = re.compile(
+    r"^\s*def\s+\w*selftest\w*\s*\(", re.MULTILINE
+)
+# Reachable entry wiring for the --selftest convention: an argv flag or a
+# direct call inside the module body.
+_SELFTEST_ENTRY_RE = re.compile(
+    r"--selftest\b|^\s*\w*selftest\w*\s*\(\s*\)", re.MULTILINE
+)
 _RUNPY_PATH_RE = re.compile(r"runpy\.run_path\s*\(([^\n]*)")
 # importlib-style explicit file loads (#905): spec_from_file_location /
 # SourceFileLoader / imp.load_source carry the target as a .py literal.
@@ -59,6 +70,20 @@ def has_testable_logic(filepath: str, content: str) -> bool:
     """Return True if the file contains runtime logic worth testing."""
     del filepath
     return bool(_PY_DEF_RE.search(content))
+
+
+def has_inline_tests(filepath: str, content: str) -> bool:
+    """True when a module wires an executable in-file test entry point (#758).
+
+    Requires both evidence of a check function and a reachable __main__
+    entry point — a bare ``def selftest`` alone is not proof of coverage.
+    """
+    del filepath
+    if _MAIN_GUARD_RE.search(content) is None:
+        return False
+    if _SELFTEST_DEF_RE.search(content) and _SELFTEST_ENTRY_RE.search(content):
+        return True
+    return bool(TEST_FUNCTION_RE.search(content))
 
 
 def resolve_import_spec(
