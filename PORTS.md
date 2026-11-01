@@ -87,7 +87,7 @@ against fork HEAD `3a7735d` (v1.0). Verdicts:
 | #806 multi-file ShellCheck can crash silently | DONE | per-file -print0/-0/-n 1 invocation |
 | #805 targeted re-review requires unselected dims | TRACK | |
 | #787 recovered queue item requests scan the guard rejects | DONE (class) | `--rescan` (fix f) |
-| #786 security detector FPs for static logs/JSON parsing | PORT | security filters |
+| #786 security detector FPs for static logs/JSON parsing | DONE | payload-aware log_sensitive + schema-validated json_parse |
 | #785 scan persists to wrong language state on exclusion change | TRACK | |
 | #784 reflect permits defer but validation rejects it | TRACK | |
 | #780 next --state loads wrong plan | TRACK | |
