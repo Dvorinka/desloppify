@@ -40,6 +40,23 @@ Upstream issue/PR triage lives in [PORTS.md](PORTS.md).
   `subjective_integrity.status == "disabled"` (upstream #923).
 - `scan --path` auto-detect falls back to the project root when `src/` is
   absent instead of producing a dead path (upstream #934 class).
+- cxx cppcheck phase now passes `-I` dirs harvested from header parents and
+  `compile_commands.json`, runs with `--check-level=exhaustive
+  --inline-suppr`, and drops header "is never used" noise (upstream PR #723).
+- cxx `unusedFunction` findings are verified by a whole-program cppcheck
+  pass over a generated compilation database — batch-local claims alone no
+  longer produce findings (upstream PR #869).
+- cxx dependency graph follows transitive header includes per include
+  context, expands `@file` response arguments, resolves entry `directory`
+  relative to the database, and marks compiled translation units as entry
+  points (upstream PRs #862, #901, #910).
+- cxx tree-sitter analysis selects the C grammar for `.c` files and C++ for
+  the rest; compilation-database loading is shared via
+  `cxx/compile_commands.py` (upstream PR #910).
+- cxx security scan treats cppcheck configuration/parse failures (missing
+  includes, unknown macros, headers parsed as C) as reduced coverage and
+  falls back to regex checks; unsafe-API names require identifier
+  boundaries (upstream PR #899).
 
 ### Changed
 

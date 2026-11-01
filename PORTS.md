@@ -139,11 +139,11 @@ against fork HEAD `3a7735d` (v1.0). Verdicts:
 | #914 keep excluded/git-ignored paths out of findings | DONE | high-value FP fix |
 | #913/#912 Kotlin unused imports / import graph | SKIP | kotlin not exercised |
 | #911 generic autofix tools per file | DONE | |
-| #910 cxx C/C++ compilation languages in AST | PENDING | |
+| #910 cxx C/C++ compilation languages in AST | DONE | |
 | #904 absolute paths from collect_exclude_dirs | DONE | |
 | #902 adopt Apache-2.0 | SKIP | relicensing is upstream's call; fork keeps OSNL |
-| #901 cxx response-file/transitive header includes | PENDING | |
-| #899 cxx false API matches + security fallback | PENDING | |
+| #901 cxx response-file/transitive header includes | DONE | |
+| #899 cxx false API matches + security fallback | DONE | |
 | #897 resolve relative scan roots before tool exclusions | DONE | pairs with #904 |
 | #891 shared queue context review targets | TRACK | |
 | #890 C# precise deps + iterator control flow | DONE | |
@@ -157,11 +157,11 @@ against fork HEAD `3a7735d` (v1.0). Verdicts:
 | #875 ignore overlapping spans in duplicate matching | DONE | dupes |
 | #874 JS dep edges for relative paths + CommonJS | DONE | overlaps #920 — take one |
 | #870 completed findings preserved on cluster defer | TRACK | |
-| #869 C++ unused-function across batches | PENDING | |
+| #869 C++ unused-function across batches | DONE | |
 | #868 nonzero status for invalid show usage | DONE | trivial CLI correctness |
 | #865 cxx Unreal automation tests | SKIP | Unreal |
 | #864 cxx header dialect + cppcheck limits | DONE | |
-| #862/#861 cxx header deps / TUs as build roots | PORT | |
+| #862/#861 cxx header deps / TUs as build roots | DONE | |
 | #860 cxx security findings from parser diagnostics | DONE | |
 | #857 preserve scan scope through review imports | TRACK | |
 | #852 ignore future-only Python facade imports | DONE | |
@@ -186,7 +186,7 @@ against fork HEAD `3a7735d` (v1.0). Verdicts:
 | #735 C# reachable code flagged unreachable | DONE | |
 | #734 Luau plugin | SKIP | new language, not a fix |
 | #731 gdscript class_name/scene refs | SKIP | |
-| #723 cxx cppcheck include-path harvesting | PENDING | |
+| #723 cxx cppcheck include-path harvesting | DONE | |
 | #722 bound Rust coverage dep resolution | DONE | |
 | #721 harden TS scanning + plan resolution | DONE | |
 | #713 harden TS project/async detection | DONE | |
@@ -211,3 +211,9 @@ against fork HEAD `3a7735d` (v1.0). Verdicts:
 | `scan --rescan` sanctioned mid-cycle rescan (#563, #787, #856 class) | `92948def` |
 | `scan --path` default falls back to `.` when `src/` absent (#934 class) | `ca27da49` |
 | `scan --diff` PR review mode + `action.yml` + example workflow | `e2753807` |
+| #723 cxx cppcheck include-path harvesting | `2206a2ee` |
+| #862/#861 cxx header deps / TUs as build roots | `0b89c69a` |
+| #869 cxx unused-function across batches | `34dd8ace` |
+| #899 cxx false API matches + security fallback | `89702e62` |
+| #901 cxx response-file + transitive header includes | `61bd10f3` |
+| #910 cxx compilation languages in AST analysis | `9a27b838` |
