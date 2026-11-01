@@ -217,6 +217,45 @@ def cached(n):
     assert isinstance(plain_fn, ast.FunctionDef)
     assert complexity_mod._detect_lru_cache_mutable("mod.py", plain_fn, no_cache_tree) == []
 
+    # Immutable constructor-backed globals must not be flagged (#854).
+    immutable_tree = ast.parse(
+        """
+import re
+from functools import lru_cache
+from types import MappingProxyType
+
+_PATTERN = re.compile(r"[A-Z]+")
+_TABLE = MappingProxyType({"admin": ("administrator",)})
+
+@lru_cache
+def uses_pattern(value):
+    return _PATTERN.sub("", value)
+
+@lru_cache
+def uses_table(value):
+    return _TABLE.get(value, ())
+"""
+    )
+    for fn in (n for n in immutable_tree.body if isinstance(n, ast.FunctionDef)):
+        assert complexity_mod._detect_lru_cache_mutable("mod.py", fn, immutable_tree) == []
+
+    # A proxy over a named mutable mapping still aliases mutable state.
+    alias_tree = ast.parse(
+        """
+from functools import lru_cache
+from types import MappingProxyType
+
+_MUTABLE = {}
+_VIEW = MappingProxyType(_MUTABLE)
+
+@lru_cache
+def uses_view(value):
+    return _VIEW.get(value)
+"""
+    )
+    alias_fn = next(n for n in alias_tree.body if isinstance(n, ast.FunctionDef))
+    assert complexity_mod._detect_lru_cache_mutable("mod.py", alias_fn, alias_tree)
+
     nested_tree = ast.parse(
         """
 
