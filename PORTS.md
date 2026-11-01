@@ -36,7 +36,7 @@ against fork HEAD `3a7735d` (v1.0). Verdicts:
 | #907 Python external-test mapping loses import roots | PORT | coverage mapping |
 | #906 skipped assessments select empty next queue | TRACK | |
 | #905 Python coverage misses importlib hyphenated CLIs | PORT | |
-| #903 C++ signature variance false compares | PORT | cxx detector |
+| #903 C++ signature variance false compares | DONE | keyword reject + owner qualifier + type-normalized params |
 | #900 strategist history schema drift | TRACK | |
 | #898 cluster-name resolution vs member IDs | TRACK | |
 | #894 (closed) scan reopens adjudicated findings | DONE upstream | |
@@ -49,10 +49,10 @@ against fork HEAD `3a7735d` (v1.0). Verdicts:
 | #884 clarify defer disposition in triage prompts | TRACK | prompt copy |
 | #883 strategist recent_investment counts lifetime | TRACK | |
 | #882 repeated strategist identifiers erase evidence | TRACK | |
-| #873 duplicate detector compares nested callbacks to container | PORT | dupes detector |
+| #873 duplicate detector compares nested callbacks to container | DONE | already fixed — overlapping spans skipped (4fa23bba) |
 | #872 accepting unchanged findings schedules another review | TRACK | |
 | #867 cppcheck batching → cross-batch unused FPs | DONE (class) | covered by ported #869 whole-program pass |
-| #866 C++ test import mapping behind headers | PORT | |
+| #866 C++ test import mapping behind headers | DONE | covered header promotes same-stem impl |
 | #863 strict score penalizes auto_resolved | TRACK | scoring semantics |
 | #859 C++ orphan detector misclassifies Unreal modules | SKIP | Unreal-specific |
 | #858 TS coverage transitive_only for rendered components | PORT | |
@@ -84,7 +84,7 @@ against fork HEAD `3a7735d` (v1.0). Verdicts:
 | #809 review imports scan-verify + stale fresh assessments | TRACK | |
 | #808 PyPI 1.0 locale-dependent Codex decoding | SKIP | Windows |
 | #807 scan prints conflicting pre/live scores | SKIP | output |
-| #806 multi-file ShellCheck can crash silently | PORT | bash |
+| #806 multi-file ShellCheck can crash silently | DONE | per-file -print0/-0/-n 1 invocation |
 | #805 targeted re-review requires unselected dims | TRACK | |
 | #787 recovered queue item requests scan the guard rejects | DONE (class) | `--rescan` (fix f) |
 | #786 security detector FPs for static logs/JSON parsing | PORT | security filters |
