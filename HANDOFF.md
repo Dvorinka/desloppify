@@ -52,6 +52,9 @@ Committed on maint/continuation:
   plan AND not open in state. 6871a47e.
 - #780 next/backlog --state load sibling plan via plan_path_for_state.
   909d1d3a.
+- #727 auto-detect fallback/multi-candidate file count now honors
+  DEFAULT_EXCLUSIONS + configured excludes; C# detect_markers widened to
+  .sln/.slnx/.csproj/.fsproj/Directory.Packages.props. e6002187.
 
 ## Remaining PORT rows
 - TRACK (~50 left): machinery bugs — next likely: #855 stale reopened
@@ -59,8 +62,9 @@ Committed on maint/continuation:
   auto_resolved (design decision — penalizes scan-confirmed resolutions;
   verify intent before changing), #872 unchanged-finding re-review loop
   (intentional per upstream test — document, don't fix), #727/#700
-  lang misdetect (cxx>csharp excludes + sln/slnx/csproj markers; Xcode
-  as TS). Then strategist/triage-prompt cluster.
+  #700 Xcode-as-TS (needs zero-source-file scan policy — detection
+  alone can't fix a Swift-only project since swift is unregistered).
+  Then strategist/triage-prompt cluster.
 
 ## Immediate next work
 1. TRACK queue remainder per above ordering.
