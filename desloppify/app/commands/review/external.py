@@ -323,7 +323,7 @@ def _build_claude_launch_prompt(
         *batch_sections,
         policy_text,
         constraints_text,
-        render_scoring_frame(),
+        render_scoring_frame(tuple(sorted(all_dims))),
         render_scan_evidence_note(),
         render_task_requirements(issues_cap=combined_cap, dim_set=all_dims),
         render_scope_enums(),

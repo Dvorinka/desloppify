@@ -31,7 +31,7 @@ from ..packet.build import (
     resolve_review_packet_context,
 )
 from ..packet.policy import redacted_review_config
-from ..prompt_sections import explode_to_single_dimension
+from .grouping import resolve_batch_mode, select_batches_for_run
 from ..runner_failures import print_failures, print_failures_and_raise
 from ..runner_packets import (
     build_batch_import_provenance,
@@ -552,8 +552,9 @@ def do_import_run(
     # Reuse the canonical merge+metadata boundary from normal batch execution.
     raw_batches = packet.get("investigation_batches", [])
     raw_dim_prompts = packet.get("dimension_prompts")
-    batches = explode_to_single_dimension(
+    batches = select_batches_for_run(
         raw_batches if isinstance(raw_batches, list) else [],
+        mode=resolve_batch_mode(summary.get("batch_mode")),
         dimension_prompts=raw_dim_prompts if isinstance(raw_dim_prompts, dict) else None,
     )
     packet_dimensions = normalize_dimension_list(packet.get("dimensions", []))

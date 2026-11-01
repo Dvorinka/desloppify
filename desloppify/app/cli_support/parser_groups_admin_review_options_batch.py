@@ -19,6 +19,17 @@ def _add_batch_execution_options(p_review: argparse.ArgumentParser) -> None:
         help="Subagent runner backend (default: codex)",
     )
     g_batch.add_argument(
+        "--batch-mode",
+        choices=["per-dimension", "grouped", "single"],
+        default="per-dimension",
+        help=(
+            "Subagent batch granularity (default: per-dimension). "
+            "'grouped' merges dimensions sharing an evidence collector into one "
+            "run (~9 runs); 'single' merges all dimensions into one run — "
+            "cheapest, shallowest"
+        ),
+    )
+    g_batch.add_argument(
         "--parallel", action="store_true", help="Run selected batches in parallel"
     )
     g_batch.add_argument(

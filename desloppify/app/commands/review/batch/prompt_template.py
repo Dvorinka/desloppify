@@ -153,7 +153,7 @@ def render_batch_prompt(
         render_persona_block(persona),
         render_dimension_prompts_block(context.dimensions, dim_prompts),
         policy_block,
-        render_scoring_frame(),
+        render_scoring_frame(context.dimensions),
         render_dimension_context_block(
             context.dimensions,
             dimension_contexts if isinstance(dimension_contexts, dict) else {},
