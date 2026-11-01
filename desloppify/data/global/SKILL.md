@@ -121,6 +121,7 @@ If `next` suggests an auto-fixer, run `desloppify autofix <fixer> --dry-run` to 
 - **Auto-clusters**: related findings are auto-grouped in `next`. Drill in with `next --cluster <name>`.
 - **Zones**: production/script (scored), test/config/generated/vendor (not scored). Fix with `zone set`.
 - **Wontfix cost**: widens the lenient↔strict gap. Challenge past decisions when the gap grows.
+- **Review-finding wontfix**: resolving a subjective review finding as `wontfix` (accepting the tradeoff) marks that dimension's assessment stale, so `next` will request a re-review of the same dimension even with no source changes. This is deliberate — a re-review re-grounds the score once findings are dispositioned, and prevents freezing a score by accepting every finding. The assessment score is preserved meanwhile; it is not zeroed.
 
 ### Scoring
 
