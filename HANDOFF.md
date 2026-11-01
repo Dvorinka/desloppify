@@ -134,3 +134,8 @@ Committed on maint/continuation:
 ## Session 2026-11-01 (VII)
 - #827 commit records now attribute the unique owning cluster;
   ambiguous stays null. bf276c8c.
+
+## Session 2026-11-01 (VIII)
+- #845 summary_hash→id index resolves holistic citations/verdicts in
+  observe (citation count, YAML verdict parse, short-hash resolution).
+  23098f74.
