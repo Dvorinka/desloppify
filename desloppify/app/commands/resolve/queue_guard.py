@@ -34,11 +34,16 @@ def _front_item_ids(front_item: dict) -> tuple[str, set[str]]:
 
 
 def _resolve_target_ids(patterns: list[str], clusters: dict) -> set[str]:
+    """Expand patterns to the open issue IDs they target.
+
+    A cluster name resolves to its member IDs only — not the token
+    itself — so `resolve <cluster>` is judged by the same queue-order
+    policy as resolving the member IDs explicitly (#898).
+    """
     resolved_ids: set[str] = set()
     for pattern in patterns:
         if pattern in clusters:
             resolved_ids.update(clusters[pattern].get("issue_ids", []))
-            resolved_ids.add(pattern)
             continue
         resolved_ids.add(pattern)
     return resolved_ids

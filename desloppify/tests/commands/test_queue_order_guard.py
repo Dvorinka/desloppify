@@ -388,3 +388,29 @@ def test_guard_allows_front_planned_review_ids_even_if_synthetic_items_render_fi
 
     blocked = _check_queue_order_guard(state, ["review::a", "review::b"], "fixed")
     assert blocked is False
+
+
+def test_guard_cluster_name_equivalent_to_member_ids(tmp_path, monkeypatch):
+    """#898: resolving a cluster by name follows the same queue-order
+    policy as resolving its members explicitly."""
+    state = _state_with_issues("one", "two", "late")
+    _setup_plan(
+        tmp_path, monkeypatch,
+        ["one", "two", "late"],
+        clusters={
+            "batch": {
+                "name": "batch",
+                "auto": False,
+                "issue_ids": ["one", "two"],
+                "description": "front cluster",
+            },
+        },
+    )
+
+    by_members = _check_queue_order_guard(state, ["one", "two"], "fixed")
+    by_cluster = _check_queue_order_guard(state, ["batch"], "fixed")
+    assert by_members is False
+    assert by_cluster is False
+
+    # An out-of-order member stays blocked through either spelling.
+    assert _check_queue_order_guard(state, ["late"], "fixed") is True
