@@ -55,7 +55,7 @@ against fork HEAD `3a7735d` (v1.0). Verdicts:
 | #866 C++ test import mapping behind headers | DONE | covered header promotes same-stem impl |
 | #863 strict score penalizes auto_resolved | TRACK | scoring semantics |
 | #859 C++ orphan detector misclassifies Unreal modules | SKIP | Unreal-specific |
-| #858 TS coverage transitive_only for rendered components | PORT | |
+| #858 TS coverage transitive_only for rendered components | DONE | ~/ + .js specifier resolver parity (9c7767fe); memo-ri repro unrecoverable (repo deleted) — gap proven via synthetic repro |
 | #856 codex --scan-after-import blocked by new queue | DONE (class) | `--rescan` is the sanctioned bypass (fix f) |
 | #855 plan skip restoration leaves stale reopened metadata | TRACK | |
 | #854 lru_cache_mutable flags immutable ctor globals | DONE | |
