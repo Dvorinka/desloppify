@@ -15,6 +15,14 @@ from desloppify.base.discovery.paths import get_project_root
 
 logger = logging.getLogger(__name__)
 
+# Interface member: `name:`, `name?:`, `name(...)`, `name<T>(...)`,
+# `readonly name:`, quoted keys, index signatures, get/set accessors.
+_MEMBER_RE = re.compile(
+    r"^(?:(?:readonly|get|set)\s+)?"
+    r"(?:[\w$]+|'[^']*'|\"[^\"]*\"|\[[^\]]*\])"
+    r"\s*[?]?\s*[:(<]"
+)
+
 
 def detect_prop_interface_bloat(
     path: Path, *, threshold: int = 14
@@ -46,6 +54,7 @@ def detect_prop_interface_bloat(
                 start = m.end()
                 # Count properties by issue the closing brace
                 brace_depth = 1
+                other_depth = 0
                 pos = start
                 prop_count = 0
                 while pos < len(content) and brace_depth > 0:
@@ -54,20 +63,20 @@ def detect_prop_interface_bloat(
                         brace_depth += 1
                     elif ch == "}":
                         brace_depth -= 1
-                    elif ch == "\n" and brace_depth == 1:
-                        # Count non-empty, non-comment lines as properties
+                    elif ch in "([":
+                        other_depth += 1
+                    elif ch in ")]" and other_depth > 0:
+                        other_depth -= 1
+                    elif ch == "\n" and brace_depth == 1 and other_depth == 0:
+                        # Count property-member lines only; multiline type
+                        # fragments (union/intersection alternatives, tuple
+                        # and call-signature continuations) are not members.
                         line_start = pos + 1
                         line_end = content.find("\n", line_start)
                         if line_end == -1:
                             line_end = len(content)
                         line = content[line_start:line_end].strip()
-                        if (
-                            line
-                            and not line.startswith("//")
-                            and not line.startswith("*")
-                            and not line.startswith("/**")
-                            and line != "}"
-                        ):
+                        if _MEMBER_RE.match(line):
                             prop_count += 1
                     pos += 1
 
