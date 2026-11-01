@@ -28,6 +28,10 @@ inputs:
     description: "Post a PR comment with the diff-review summary (requires pull-requests: write)"
     required: false
     default: "true"
+  fail-on-regression:
+    description: "Fail the check when the strict score drops more than this many points (e.g. 0.5). Empty: never gate."
+    required: false
+    default: ""
 
 outputs:
   strict_before:
@@ -69,10 +73,15 @@ runs:
         if [ -n "${{ inputs.lang }}" ]; then
           lang_args=(--lang "${{ inputs.lang }}")
         fi
+        gate_args=()
+        if [ -n "${{ inputs.fail-on-regression }}" ]; then
+          gate_args=(--max-regression "${{ inputs.fail-on-regression }}")
+        fi
         desloppify "${lang_args[@]}" scan --path "${{ inputs.path }}" \
           --profile ci --no-badge \
           --diff "${{ steps.base.outputs.ref }}" \
-          --annotations-json annotations.json
+          --annotations-json annotations.json \
+          "${gate_args[@]}"
         python3 - <<'PY' >> "$GITHUB_OUTPUT"
         import json
         p = json.load(open("annotations.json"))

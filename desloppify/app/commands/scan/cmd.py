@@ -220,6 +220,18 @@ def cmd_scan(args: argparse.Namespace) -> None:
             new_strict=new_strict,
             base=diff_base,
         )
+        max_regression = getattr(args, "max_regression", None)
+        if (
+            max_regression is not None
+            and merge.prev_strict is not None
+            and new_strict is not None
+            and merge.prev_strict - new_strict > max_regression
+        ):
+            raise CommandError(
+                f"Strict score regressed {merge.prev_strict - new_strict:.1f} "
+                f"points (allowed {max_regression}).",
+                exit_code=3,
+            )
         annotations_json = getattr(args, "annotations_json", None)
         if annotations_json:
             diff_annotations_mod.write_annotations_json(

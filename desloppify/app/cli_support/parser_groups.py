@@ -123,6 +123,16 @@ examples:
         help="With --diff: write machine-readable annotations JSON to PATH",
     )
     p_scan.add_argument(
+        "--max-regression",
+        type=float,
+        default=None,
+        metavar="POINTS",
+        help=(
+            "With --diff: exit 3 when the strict score drops more than POINTS "
+            "vs the stored baseline (PR gate; default: no gate)."
+        ),
+    )
+    p_scan.add_argument(
         "--rescan",
         action="store_true",
         help=(

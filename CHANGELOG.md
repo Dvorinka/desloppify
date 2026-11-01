@@ -79,3 +79,13 @@ Upstream issue/PR triage lives in [PORTS.md](PORTS.md).
   `pip install "desloppify[full] @ git+https://github.com/Dvorinka/desloppify"`.
 - SKILL.md documents the triage report contract (literal issue IDs,
   `## Coverage Ledger`) and `--attested-external` requirements.
+
+## PR review mode (W2)
+- `scan --diff BASE` was already bundled: mechanical annotations on
+  `BASE...HEAD` changed lines + strict-score delta. New this arc:
+  `--max-regression POINTS` gates the run (exit 3) when the strict score
+  drops more than allowed vs the stored baseline.
+- Root `action.yml` gained a `fail-on-regression` input wired to
+  `--max-regression`; `Dvorinka/desloppify@main` usable as a PR check.
+- `.github/workflows/desloppify-pr-review.example.yml` — copy-paste
+  consumer workflow (checkout fetch-depth 0 + action + gate example).
