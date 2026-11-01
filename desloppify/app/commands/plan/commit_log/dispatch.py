@@ -129,6 +129,27 @@ def _maybe_update_pr_body(plan: dict) -> None:
         )
 
 
+def _unambiguous_cluster_name(plan: dict, issue_ids: list[str]) -> str | None:
+    """Return the single cluster owning the recorded ids, else None.
+
+    Attribution is only safe when exactly one cluster's membership
+    intersects the recorded ids — multi-cluster commits stay explicitly
+    unassigned rather than guessing one owner (#827).
+    """
+    recorded = set(issue_ids)
+    owners: set[str] = set()
+    clusters = plan.get("clusters")
+    if not isinstance(clusters, dict):
+        return None
+    for name, cluster in clusters.items():
+        if not isinstance(cluster, dict):
+            continue
+        members = set(cluster.get("issue_ids") or [])
+        if members & recorded:
+            owners.add(str(name))
+    return owners.pop() if len(owners) == 1 else None
+
+
 def _cmd_commit_log_record(args: argparse.Namespace, plan: dict) -> None:
     """Record a commit: capture HEAD, move uncommitted -> committed, update PR."""
     sha = getattr(args, "sha", None)
@@ -144,12 +165,17 @@ def _cmd_commit_log_record(args: argparse.Namespace, plan: dict) -> None:
     if issue_ids == []:
         return
 
+    # None selects every uncommitted id — resolve the real set so cluster
+    # attribution sees the actual membership (#827).
+    recorded_ids = issue_ids if issue_ids is not None else get_uncommitted_issues(plan)
+
     record = record_commit(
         plan,
         sha=sha,
         branch=branch,
         issue_ids=issue_ids,
         note=note,
+        cluster_name=_unambiguous_cluster_name(plan, recorded_ids),
     )
     append_log_entry(
         plan,
