@@ -18,7 +18,7 @@ against fork HEAD `3a7735d` (v1.0). Verdicts:
 |---|---|---|
 | #936 coverage scan log labels denominator wrong | SKIP | log cosmetics |
 | #934 review defaults to missing src when scan_path null | DONE | get_default_scan_path falls back to root (fix g) |
-| #933 TS coverage/dep resolvers miss workspace exports | PORT | monorepo correctness |
+| #933 TS coverage/dep resolvers miss workspace exports | DONE | resolvers follow workspace exports (2b7120d1) |
 | #932 next recommends dead-useeffect autofix for README finding | SKIP | nudge wording |
 | #931 queued work auto-completes unrelated steps | TRACK | queue machinery |
 | #930 plan cluster add crashes on protected skip | TRACK | |
@@ -108,7 +108,7 @@ against fork HEAD `3a7735d` (v1.0). Verdicts:
 | #726/#683 C# namespace co-membership as import edge | PORT | csharp graph |
 | #717/#716/#714 Windows decoding/executable/npx | SKIP | Windows |
 | #715 tree-sitter dep graph drops relative + CJS edges | DONE | ported #874+#920 — canonical compare + require() query |
-| #709 next_lint removed in Next.js 16 | PORT | tool compat |
+| #709 next_lint removed in Next.js 16 | DONE | cmd_resolver → eslint direct on next>=16 (d8267ca0) |
 | #705 tsconfig paths aliases unresolved → orphan FPs | DONE | ported #924+#925 (36dfaf86, 324811f2) |
 | #701 plan resolve auto-completes unrelated steps | TRACK | |
 | #700 Swift Xcode misdetected as TS | TRACK | detection |

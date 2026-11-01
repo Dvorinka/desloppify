@@ -91,13 +91,15 @@ def make_tool_phase(
     *,
     confidence: str = "medium",
     cwd_fn: Callable[[Path, Any], Path] | None = None,
+    cmd_fn: Callable[[Path, Any], str | None] | None = None,
 ) -> DetectorPhase:
     """Create a DetectorPhase that runs an external tool and parses output."""
     parser = PARSERS[fmt]
 
     def run(path: Path, lang: Any) -> tuple[list[dict[str, Any]], dict[str, int]]:
         run_path = cwd_fn(path, lang).resolve() if cwd_fn is not None else path
-        run_result = run_tool_result(cmd, run_path, parser)
+        run_cmd = cmd_fn(path, lang) if cmd_fn is not None else None
+        run_result = run_tool_result(run_cmd or cmd, run_path, parser)
         if run_result.status == "error":
             _record_tool_failure_coverage(
                 lang,

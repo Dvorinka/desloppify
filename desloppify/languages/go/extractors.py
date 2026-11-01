@@ -18,11 +18,13 @@ GO_FILE_EXCLUSIONS = ["vendor", "testdata", ".git", "node_modules"]
 
 _FUNC_DECL_RE = re.compile(
     r"(?m)^func\s+"
-    r"(?:\(\s*\w+\s+\*?\w+(?:\[[\w,\s]+\])?\s*\)\s*)?"  # optional receiver
+    r"(?:\(\s*\w+\s+\*?(\w+)(?:\[[\w,\s]+\])?\s*\)\s*)?"  # optional receiver type
     r"(\w+)"  # function name
     r"(?:\[[\w,\s~|]+\])?"  # optional type params (generics)
     r"\s*\("
 )
+
+_PACKAGE_DECL_RE = re.compile(r"(?m)^package\s+(\w+)")
 
 
 def find_go_files(path: Path | str) -> list[str]:
@@ -226,9 +228,17 @@ def extract_go_functions(filepath: str) -> list[FunctionInfo]:
     except OSError:
         return []
 
+    package_match = _PACKAGE_DECL_RE.search(content)
+    package = package_match.group(1) if package_match else ""
+
     functions: list[FunctionInfo] = []
     for match in _FUNC_DECL_RE.finditer(content):
-        name = match.group(1)
+        receiver = match.group(1)
+        name = match.group(2)
+        # Methods are scoped by package + receiver type — `alpha.Resource.Close`
+        # and `beta.Resource.Close` are unrelated contracts (#641).
+        if receiver:
+            name = f"{package}.{receiver}.{name}" if package else f"{receiver}.{name}"
         start = match.start()
         start_line = content.count("\n", 0, start) + 1
 
