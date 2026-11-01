@@ -77,7 +77,7 @@ against fork HEAD `3a7735d` (v1.0). Verdicts:
 | #823 triage runner loses language/state in mixed projects | TRACK | |
 | #821 boilerplate detector drops scoring potential | TRACK | |
 | #815 mixed-language review imports remove queue items | TRACK | |
-| #814 Python coverage misses runpy.run_path tests | PORT | |
+| #814 Python coverage misses runpy.run_path tests | DONE | .py literal specs from runpy.run_path args |
 | #813 post-flight refresh in queue but next empty | TRACK | |
 | #811 sort_no_comparator warns on canonical ordering | DONE | string-keyed Object sources exempt (d1205d5c) |
 | #810 TS async_no_await mistakes return types for bodies | DONE | signature-brace tracking (ported #721, d5b770e5) |
