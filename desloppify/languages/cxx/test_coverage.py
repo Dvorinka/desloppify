@@ -193,3 +193,35 @@ def strip_test_markers(basename: str) -> str | None:
 def strip_comments(content: str) -> str:
     """Strip C-style comments while preserving string literals."""
     return strip_c_style_comments(content)
+
+
+
+def promote_owner_covered_files(
+    directly_tested: set[str],
+    transitively_tested: set[str],
+    production_files: set[str] | None = None,
+) -> set[str]:
+    """Credit implementation files whose companion header is covered.
+
+    `#include "widget.h"` maps a test to the header only, but the calls it
+    makes execute in `widget.cpp` (#866). Same-basename promotion stays
+    conservative: `widget.cpp` is promoted only when `widget.h` is already
+    covered, never headers→headers or unrelated includes.
+    """
+    if not production_files:
+        return set()
+    covered = {p.replace("\\", "/") for p in (*directly_tested, *transitively_tested)}
+    if not covered:
+        return set()
+    impl_by_stem: dict[str, list[str]] = {}
+    for prod in production_files:
+        normalized = prod.replace("\\", "/")
+        if normalized.endswith(_SOURCE_EXTENSIONS):
+            impl_by_stem.setdefault(os.path.splitext(normalized)[0], []).append(normalized)
+    promoted: set[str] = set()
+    for header in covered:
+        if not header.endswith(_HEADER_EXTENSIONS):
+            continue
+        stem = os.path.splitext(header)[0]
+        promoted.update(impl_by_stem.get(stem, ()))
+    return promoted
