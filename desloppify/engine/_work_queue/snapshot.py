@@ -481,8 +481,16 @@ def _build_item_partitions(
             item.get("kind") == "subjective_dimension"
             and int((item.get("detail") or {}).get("open_review_issues", 0)) > 0
         )
-    ] + list(assessment_request_items_list)
-    postflight_review_items = list(executable_review_items)
+    ] + [
+        item
+        for item in assessment_request_items_list
+        if item.get("id", "") not in skipped_ids
+    ]
+    postflight_review_items = [
+        item
+        for item in executable_review_items
+        if item.get("id", "") not in skipped_ids
+    ]
 
     scan_items, postflight_workflow_items, triage_items = _workflow_partitions(
         effective_plan,
@@ -509,21 +517,29 @@ def _build_backlog(
     p: _Partitions,
     execution_ids: set[str],
 ) -> list[WorkQueueItem]:
-    return [
-        item
-        for item in (
-            [
-                *p.objective_items,
-                *p.initial_review_items,
-                *p.postflight_assessment_items,
-                *p.review_issue_items,
-                *p.scan_items,
-                *p.postflight_workflow_items,
-                *p.triage_items,
-            ]
-        )
-        if item.get("id", "") not in execution_ids
-    ]
+    # The partitions are overlapping views of the same findings (e.g. a
+    # subjective assessment request exists both as a state work item and as a
+    # synthetic item; strategy findings span objective and review partitions),
+    # so dedupe by canonical ID — each finding renders once in the backlog.
+    backlog: list[WorkQueueItem] = []
+    seen_ids: set[str] = set()
+    for item in (
+        [
+            *p.objective_items,
+            *p.initial_review_items,
+            *p.postflight_assessment_items,
+            *p.review_issue_items,
+            *p.scan_items,
+            *p.postflight_workflow_items,
+            *p.triage_items,
+        ]
+    ):
+        item_id = item.get("id", "")
+        if item_id in execution_ids or item_id in seen_ids:
+            continue
+        seen_ids.add(item_id)
+        backlog.append(item)
+    return backlog
 
 
 # ---------------------------------------------------------------------------

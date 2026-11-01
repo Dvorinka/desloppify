@@ -8,7 +8,10 @@ from desloppify.base.output.terminal import colorize
 from desloppify.engine._work_queue.context import (
     queue_context,
 )
-from desloppify.engine._work_queue.plan_order import collapse_clusters
+from desloppify.engine._work_queue.plan_order import (
+    collapse_clusters,
+    filter_cluster_focus,
+)
 from desloppify.engine._work_queue.core import QueueBuildOptions
 from desloppify.engine.planning.queue_policy import build_execution_queue
 
@@ -138,7 +141,12 @@ def _check_queue_order_guard(
         ),
     )
     items = result["items"]
-    if not plan.get("active_cluster"):
+    # Mirror `next`: with an active cluster focus, items outside the cluster
+    # (including synthetic subjective assessment work) are not the user's
+    # "next" — resolve eligibility must follow the same view.
+    if plan.get("active_cluster"):
+        items = filter_cluster_focus(items, plan, plan.get("active_cluster"))
+    else:
         items = collapse_clusters(items, plan)
     if not items:
         return False

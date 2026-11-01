@@ -105,6 +105,14 @@ def add_to_cluster(
     """
     ensure_plan_defaults(plan)
     cluster = _cluster_or_raise(plan, cluster_name)
+    skipped_ids = set(plan.get("skipped", {}))
+    protected = [fid for fid in issue_ids if fid in skipped_ids]
+    if protected:
+        raise ValueError(
+            f"Cannot add skipped item(s) to cluster {cluster_name!r}: "
+            f"{', '.join(protected)}. Remove the skip first with "
+            "`desloppify plan unskip <id>` (protected skips need --force)."
+        )
     member_ids: list[str] = cluster["issue_ids"]
     queue_order: list[str] = plan.get("queue_order", [])
     is_manual = not cluster.get("auto")
