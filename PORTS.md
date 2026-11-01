@@ -62,7 +62,7 @@ against fork HEAD `3a7735d` (v1.0). Verdicts:
 | #853 Python unused detector silent zero without Ruff | DONE | missing-tool coverage |
 | #849 Python orphan misses Alembic runtime modules | DONE | |
 | #847 mixin contract misses inherited methods | DONE | |
-| #846/#801 dict_keys FPs for fallbacks/aliases | PORT | python detector |
+| #846/#801 dict_keys FPs for fallbacks/aliases | DONE | provenance/conditional/self-scope fixes |
 | #845 observe triage: holistic issues can't be cited by hash | TRACK | |
 | #842 RequestInit credentials flagged as secret | DONE (class) | value-based gate (fix b) — `credentials: "include"` has no secret value |
 | #838 TS props detector counts union alternatives | DONE | member-line counting (60c61251) |
