@@ -46,7 +46,7 @@ def test_python_security_prerequisites_and_detection_flow(monkeypatch, tmp_path)
             return {"detector": "security", "status": "full"}
 
     monkeypatch.setattr(py_security_mod, "scan_root_from_files", lambda _files: tmp_path)
-    monkeypatch.setattr(py_security_mod, "collect_exclude_dirs", lambda _root: [".venv", "build"])
+    monkeypatch.setattr(py_security_mod, "collect_exclude_dirs", lambda _root, **_kw: [".venv", "build"])
     monkeypatch.setattr(
         py_security_mod,
         "detect_with_bandit",
