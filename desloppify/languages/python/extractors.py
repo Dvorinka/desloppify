@@ -1,5 +1,6 @@
 """Python extraction: function bodies, class structure, param patterns."""
 
+import ast
 import hashlib
 import re
 from pathlib import Path
@@ -29,18 +30,36 @@ def _find_signature_end(lines: list[str], start: int) -> int | None:
     return None
 
 
+def _real_def_lines(content: str) -> set[int] | None:
+    """1-based line numbers of actual ``def`` statements, or None if unparseable.
+
+    Multiline strings can carry function-shaped fixtures; the AST is the
+    authority on which ``def`` tokens are real definitions.
+    """
+    try:
+        tree = ast.parse(content)
+    except (SyntaxError, ValueError):
+        return None
+    return {
+        node.lineno
+        for node in ast.walk(tree)
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    }
+
+
 def extract_py_functions(filepath: str) -> list[FunctionInfo]:
     """Extract function bodies from a Python file using indentation-based boundaries."""
     content = read_file(filepath)
     if content is None:
         return []
+    real_defs = _real_def_lines(content)
     lines = content.splitlines()
     functions = []
     fn_re = re.compile(r"^(\s*)(?:async\s+)?def\s+(\w+)\s*\(")
     i = 0
     while i < len(lines):
         m = fn_re.match(lines[i])
-        if not m:
+        if not m or (real_defs is not None and i + 1 not in real_defs):
             i += 1
             continue
         fn_indent = len(m.group(1))

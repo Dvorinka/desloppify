@@ -95,3 +95,30 @@ def test_src_layout_absolute_imports_resolve(tmp_path, monkeypatch):
     cli.write_text("from example.core import run\n")
     graph = build_dep_graph(tmp_path)
     assert str(cli) in graph[str(core)]["importers"]
+
+
+def test_extract_skips_defs_inside_string_fixtures(tmp_path):
+    from desloppify.languages.python.extractors import extract_py_functions
+
+    mod = tmp_path / "selftest_mod.py"
+    mod.write_text(
+        '''def selftest():
+    violating = \'\'\'
+def _write(text, apply):
+    write_without_read(text)
+\'\'\'
+    a = 1
+    b = 2
+    c = a + b
+    return c
+
+
+def real_helper(x):
+    y = x + 1
+    z = y * 2
+    return z
+'''
+    )
+    names = [fn.name for fn in extract_py_functions(str(mod))]
+    assert "_write" not in names
+    assert "real_helper" in names
