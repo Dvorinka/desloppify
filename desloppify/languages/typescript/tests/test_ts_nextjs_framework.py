@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -9,6 +11,10 @@ import pytest
 
 from desloppify.engine.planning import scan as plan_scan_mod
 from desloppify.languages._framework.frameworks.detection import detect_ecosystem_frameworks
+from desloppify.languages._framework.frameworks.specs.nextjs import (
+    NEXTJS_SPEC,
+    _resolve_next_lint_cmd,
+)
 from desloppify.languages._framework.node.frameworks.nextjs.info import (
     nextjs_info_from_evidence,
 )
@@ -227,3 +233,40 @@ def test_next_lint_phase_is_skipped_when_include_slow_false():
     labels = [getattr(p, "label", "") for p in selected]
     assert "Next.js framework smells" in labels
     assert "next lint" not in labels
+
+
+class TestNextLintCmdResolver:
+    def _with_next(self, tmp_path: Path, version: str) -> Path:
+        pkg = tmp_path / "node_modules" / "next" / "package.json"
+        pkg.parent.mkdir(parents=True)
+        pkg.write_text(json.dumps({"name": "next", "version": version}))
+        return tmp_path
+
+    @pytest.mark.parametrize("version", ["14.2.0", "15.5.2", "v15.0.0"])
+    def test_legacy_cmd_for_next_15_and_earlier(self, tmp_path: Path, version: str):
+        self._with_next(tmp_path, version)
+        assert _resolve_next_lint_cmd(tmp_path) is None
+
+    @pytest.mark.parametrize("version", ["16.0.0", "16.3.0", "v17.1.0", "18.0.0-canary.1"])
+    def test_eslint_cmd_for_next_16_and_later(self, tmp_path: Path, version: str):
+        self._with_next(tmp_path, version)
+        assert _resolve_next_lint_cmd(tmp_path) == (
+            "npx --no-install eslint --format json ."
+        )
+
+    def test_missing_or_unreadable_package_json_returns_none(self, tmp_path: Path):
+        assert _resolve_next_lint_cmd(tmp_path) is None
+        pkg = tmp_path / "node_modules" / "next" / "package.json"
+        pkg.parent.mkdir(parents=True)
+        pkg.write_text("not json {")
+        assert _resolve_next_lint_cmd(tmp_path) is None
+
+    def test_hoisted_install_found_from_nested_package(self, tmp_path: Path):
+        self._with_next(tmp_path, "16.3.0")
+        nested = tmp_path / "apps" / "web"
+        nested.mkdir(parents=True)
+        assert _resolve_next_lint_cmd(nested) is not None
+
+    def test_spec_declares_resolver(self):
+        tool = next(t for t in NEXTJS_SPEC.tools if t.id == "next_lint")
+        assert tool.cmd_resolver is _resolve_next_lint_cmd

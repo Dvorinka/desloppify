@@ -51,6 +51,9 @@ class ToolIntegration:
     tier: int
     slow: bool = False
     confidence: str = "medium"
+    # Optional per-scan-root command override (tooling that changed across
+    # versions); ``None`` keeps ``cmd``.
+    cmd_resolver: Callable[[Path], str | None] | None = None
 
 
 @dataclass(frozen=True)

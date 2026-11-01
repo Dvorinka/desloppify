@@ -23,7 +23,7 @@ against fork HEAD `3a7735d` (v1.0). Verdicts:
 | #931 queued work auto-completes unrelated steps | TRACK | queue machinery |
 | #930 plan cluster add crashes on protected skip | TRACK | |
 | #929/#928 backlog duplicate IDs / repeats findings | TRACK | |
-| #927 move misses imports with explicit TS extensions | PORT | move correctness |
+| #927 move misses imports with explicit TS extensions | DONE | specifier-form variants in move (e4fd165a) |
 | #923 CLI threatens target-match resets though policy disabled | DONE | fixed here — threat text aligned with disabled policy (fix e) |
 | #922 plan resolve exits 0 on queue-order guard reject | TRACK | |
 | #921 test-coverage summary labels LOC potential wrong | SKIP | display |
@@ -65,9 +65,9 @@ against fork HEAD `3a7735d` (v1.0). Verdicts:
 | #846/#801 dict_keys FPs for fallbacks/aliases | PORT | python detector |
 | #845 observe triage: holistic issues can't be cited by hash | TRACK | |
 | #842 RequestInit credentials flagged as secret | DONE (class) | value-based gate (fix b) — `credentials: "include"` has no secret value |
-| #838 TS props detector counts union alternatives | PORT | |
+| #838 TS props detector counts union alternatives | DONE | member-line counting (60c61251) |
 | #832 next/plan ignore plan dir implied by --state | TRACK | |
-| #831 TS unused ignores tsconfig.json | PORT | |
+| #831 TS unused ignores tsconfig.json | DONE | nearest-tsconfig walk (ported #713, 99e0c2a3) |
 | #830 partial trusted review import resolves outside dimension | TRACK | |
 | #829 schema-drift clustering quadratic | SKIP | perf |
 | #827 CLI commit records omit cluster attribution | TRACK | |
@@ -79,8 +79,8 @@ against fork HEAD `3a7735d` (v1.0). Verdicts:
 | #815 mixed-language review imports remove queue items | TRACK | |
 | #814 Python coverage misses runpy.run_path tests | PORT | |
 | #813 post-flight refresh in queue but next empty | TRACK | |
-| #811 sort_no_comparator warns on canonical ordering | PORT | ts-smells |
-| #810 TS async_no_await mistakes return types for bodies | PORT | |
+| #811 sort_no_comparator warns on canonical ordering | DONE | string-keyed Object sources exempt (d1205d5c) |
+| #810 TS async_no_await mistakes return types for bodies | DONE | signature-brace tracking (ported #721, d5b770e5) |
 | #809 review imports scan-verify + stale fresh assessments | TRACK | |
 | #808 PyPI 1.0 locale-dependent Codex decoding | SKIP | Windows |
 | #807 scan prints conflicting pre/live scores | SKIP | output |
@@ -95,7 +95,7 @@ against fork HEAD `3a7735d` (v1.0). Verdicts:
 | #772 Python dup detector parses string fixtures | DONE | AST-gated extraction |
 | #771 selftest suites treated as untested | PORT | partial — import edges fixed via #770; *_selftest coverage mapping still open |
 | #770/#769 Python orphan misses nested pkg/__main__ CLIs | DONE | source_dir roots + __main__ guard hook |
-| #761 TS body extraction stops in typed params | PORT | |
+| #761 TS body extraction stops in typed params | DONE | signature-brace tracking (ported #721, d5b770e5) |
 | #759 scan output/history disagree after FP adjudication | TRACK | |
 | #758 in-file selftests reported untested | PORT | |
 | #756 Rust orphan flags custom cargo bin target | PORT | |
@@ -109,13 +109,13 @@ against fork HEAD `3a7735d` (v1.0). Verdicts:
 | #717/#716/#714 Windows decoding/executable/npx | SKIP | Windows |
 | #715 tree-sitter dep graph drops relative + CJS edges | DONE | ported #874+#920 — canonical compare + require() query |
 | #709 next_lint removed in Next.js 16 | PORT | tool compat |
-| #705 tsconfig paths aliases unresolved → orphan FPs | PORT | (has PR #924/#925) |
+| #705 tsconfig paths aliases unresolved → orphan FPs | DONE | ported #924+#925 (36dfaf86, 324811f2) |
 | #701 plan resolve auto-completes unrelated steps | TRACK | |
 | #700 Swift Xcode misdetected as TS | TRACK | detection |
 | #678 Django live modules reported dead | DONE | framework conventions |
 | #675 cluster --depends-on replaces not appends | TRACK | (closed PR #708 exists) |
 | #674 plan skip exits 0 on zero-match | TRACK | (closed PR #706 exists) |
-| #665 importer_count misses @/ aliases | PORT | |
+| #665 importer_count misses @/ aliases | DONE | ported #924+#925 — per-importer tsconfig |
 | #664 Python scan parses excluded virtualenv in coupling | DONE | same fix as #915 — exclusion-aware finder |
 | #643 Go flat-dir counts _test.go as production | PORT | go detector |
 | #642 Go coverage misses same-package behavior tests | PORT | |
@@ -134,7 +134,7 @@ against fork HEAD `3a7735d` (v1.0). Verdicts:
 | #937 attribute strategist work to scored dimensions | TRACK | |
 | #935 enforce trusted review coverage | TRACK | |
 | #926 Next.js entrypoints in nested packages | DONE | |
-| #925/#924 TS aliases against each importer tsconfig | PORT | |
+| #925/#924 TS aliases against each importer tsconfig | DONE | 36dfaf86 + 324811f2 |
 | #920 JS import edges across scan root | DONE | |
 | #914 keep excluded/git-ignored paths out of findings | DONE | high-value FP fix |
 | #913/#912 Kotlin unused imports / import graph | SKIP | kotlin not exercised |
@@ -217,3 +217,8 @@ against fork HEAD `3a7735d` (v1.0). Verdicts:
 | #899 cxx false API matches + security fallback | `89702e62` |
 | #901 cxx response-file + transitive header includes | `61bd10f3` |
 | #910 cxx compilation languages in AST analysis | `9a27b838` |
+| #924 TS aliases resolved against each importer tsconfig | `36dfaf86` |
+| #925 TS coverage aliases from importer tsconfig | `324811f2` |
+| #838 props detector counts only member lines | `60c61251` |
+| #811 sort_no_comparator skips string-keyed Object sources | `d1205d5c` |
+| #927 move preserves explicit TS extensions / index forms | `e4fd165a` |
