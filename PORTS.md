@@ -133,7 +133,7 @@ against fork HEAD `3a7735d` (v1.0). Verdicts:
 | #938 require detector evidence for manual scan verification | TRACK | verification flow |
 | #937 attribute strategist work to scored dimensions | TRACK | |
 | #935 enforce trusted review coverage | TRACK | |
-| #926 Next.js entrypoints in nested packages | PENDING | |
+| #926 Next.js entrypoints in nested packages | DONE | |
 | #925/#924 TS aliases against each importer tsconfig | PORT | |
 | #920 JS import edges across scan root | DONE | |
 | #914 keep excluded/git-ignored paths out of findings | DONE | high-value FP fix |
@@ -183,12 +183,12 @@ against fork HEAD `3a7735d` (v1.0). Verdicts:
 | #739 JVM imports in Gradle/Maven roots | DONE | |
 | #738 opencode batch payload fences | SKIP | runner |
 | #737 opencode via shutil.which on Windows | SKIP | |
-| #735 C# reachable code flagged unreachable | PENDING | |
+| #735 C# reachable code flagged unreachable | DONE | |
 | #734 Luau plugin | SKIP | new language, not a fix |
 | #731 gdscript class_name/scene refs | SKIP | |
 | #723 cxx cppcheck include-path harvesting | PENDING | |
-| #722 bound Rust coverage dep resolution | PENDING | |
-| #721 harden TS scanning + plan resolution | PENDING | |
+| #722 bound Rust coverage dep resolution | DONE | |
+| #721 harden TS scanning + plan resolution | DONE | |
 | #713 harden TS project/async detection | DONE | |
 | #712 scale+correct Rust coverage mapping | DONE | |
 | #710 java PMD -f text | DONE | |
