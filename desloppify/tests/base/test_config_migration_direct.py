@@ -72,3 +72,19 @@ def test_migrate_from_state_files_returns_empty_when_state_dir_missing(tmp_path:
     config_path = tmp_path / "missing-dir" / "config.json"
 
     assert migration_mod._migrate_from_state_files(config_path) == {}
+
+
+def test_default_scan_path_prefers_src_when_present(tmp_path):
+    from desloppify.base.discovery.paths import get_default_scan_path
+
+    (tmp_path / "src").mkdir()
+    assert get_default_scan_path(project_root=tmp_path) == tmp_path / "src"
+    assert get_default_scan_path(project_root=tmp_path, default_src="lib") == tmp_path
+
+
+def test_default_scan_path_falls_back_to_root_without_src(tmp_path):
+    from desloppify.base.discovery.paths import get_default_scan_path
+
+    # Monorepo/flat layout: no src/ — auto-detect must not produce a dead path.
+    (tmp_path / "apps" / "web").mkdir(parents=True)
+    assert get_default_scan_path(project_root=tmp_path) == tmp_path
