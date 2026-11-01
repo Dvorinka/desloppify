@@ -9,8 +9,8 @@ against fork HEAD `3a7735d` (v1.0). Verdicts:
   (codex/opencode/rovo) plumbing, languages we don't exercise, or cosmetic.
 - **TRACK** — valid bug, but touches deep queue/plan machinery; revisit after the
   core detector fixes settle.
-- **PENDING** — port attempted but conflicts with an overlapping ported PR or
-  the fork's diverged tree; retry with a manual three-way merge.
+- **PENDING** — port attempted but conflicts under `git apply --3way` with the
+  ported tree; needs a hand-merge, not mechanical application.
 
 ## Issues
 
@@ -135,19 +135,19 @@ against fork HEAD `3a7735d` (v1.0). Verdicts:
 | #935 enforce trusted review coverage | TRACK | |
 | #926 Next.js entrypoints in nested packages | PENDING | |
 | #925/#924 TS aliases against each importer tsconfig | PORT | |
-| #920 JS import edges across scan root | PENDING | |
+| #920 JS import edges across scan root | DONE | |
 | #914 keep excluded/git-ignored paths out of findings | DONE | high-value FP fix |
 | #913/#912 Kotlin unused imports / import graph | SKIP | kotlin not exercised |
 | #911 generic autofix tools per file | DONE | |
 | #910 cxx C/C++ compilation languages in AST | PENDING | |
-| #904 absolute paths from collect_exclude_dirs | PENDING | |
+| #904 absolute paths from collect_exclude_dirs | DONE | |
 | #902 adopt Apache-2.0 | SKIP | relicensing is upstream's call; fork keeps OSNL |
 | #901 cxx response-file/transitive header includes | PENDING | |
 | #899 cxx false API matches + security fallback | PENDING | |
-| #897 resolve relative scan roots before tool exclusions | PENDING | pairs with #904 |
+| #897 resolve relative scan roots before tool exclusions | DONE | pairs with #904 |
 | #891 shared queue context review targets | TRACK | |
 | #890 C# precise deps + iterator control flow | DONE | |
-| #889 external scanner exclusions → absolute paths | PENDING | same family as #897 |
+| #889 external scanner exclusions → absolute paths | DONE | same family as #897 |
 | #881 review freshness + queue prerequisites | TRACK | |
 | #880 unchanged scan corroboration invalidating reviews | TRACK | |
 | #879 persist strategy work-item resolution | TRACK | |
@@ -176,7 +176,7 @@ against fork HEAD `3a7735d` (v1.0). Verdicts:
 | #835 queue targets + scope plans to state files | TRACK | |
 | #802 exact issue ID precedence over prefix | DONE | |
 | #762 config excludes in bandit + module-installed bandit | DONE | |
-| #750 count CommonJS require() as import edge | PENDING | overlaps #874/#920 |
+| #750 count CommonJS require() as import edge | DONE | superseded by ported #874+#920 |
 | #744 integrate 27 reviewed PRs | TRACK | meta-PR — mine for port candidates |
 | #741 rust member/nested-worktree boundaries | DONE | |
 | #740 Kotlin operator convention imports | SKIP | |
