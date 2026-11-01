@@ -93,7 +93,7 @@ def test_unenriched_clusters_flags_missing_requirements() -> None:
     assert "empty_cluster" not in gaps
     assert gaps["needs_everything"] == ["description", "action_steps"]
     assert gaps["small_needs_more_steps"] == [
-        "action_steps (have 2, need >= 3 for small cluster)"
+        "action_steps (have 2, need >= 3 for small cluster — or cover every issue via step issue_refs)"
     ]
     assert "large_has_steps" not in gaps
 
@@ -234,3 +234,37 @@ def test_validate_stage_report_length_requires_longer_report_for_larger_issue_co
     out = capsys.readouterr().out
     assert "minimum 100" in out
     assert "Add concrete evidence." in out
+
+
+def test_unenriched_clusters_accepts_consolidated_steps_with_issue_refs() -> None:
+    """#888: a consolidated step counts when its issue_refs cover every
+    member — matching the organize prompt's consolidate-by-file guidance."""
+    plan = {
+        "clusters": {
+            "consolidated_covered": {
+                "auto": False,
+                "issue_ids": ["review::a", "review::b", "review::c"],
+                "description": "ok",
+                "action_steps": [
+                    {"title": "merge stale tests", "issue_refs": ["review::a", "review::b"]},
+                    {"title": "verify suite", "issue_refs": ["review::c"]},
+                ],
+            },
+            "consolidated_partial": {
+                "auto": False,
+                "issue_ids": ["review::d", "review::e", "review::f"],
+                "description": "ok",
+                "action_steps": [
+                    {"title": "fix some", "issue_refs": ["review::d"]},
+                    {"title": "fix rest", "issue_refs": ["review::e"]},
+                ],
+            },
+        }
+    }
+
+    gaps = dict(stage_helpers_mod.unenriched_clusters(plan))
+
+    assert "consolidated_covered" not in gaps
+    assert gaps["consolidated_partial"] == [
+        "action_steps (have 2, need >= 3 for small cluster — or cover every issue via step issue_refs)"
+    ]

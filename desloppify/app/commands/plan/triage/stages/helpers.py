@@ -117,6 +117,10 @@ def unenriched_clusters(
     - Small clusters (< 5 issues) need at least 1 action step per issue,
       so each item has a concrete plan. Large clusters (>= 5) just need
       steps overall (cluster-level plan is sufficient).
+    - Consolidated steps also satisfy small clusters when their
+      issue_refs cover every member (#888) — the organize prompt tells
+      runners to consolidate by file/logical change, so a raw step count
+      would contradict it.
     """
     gaps: list[tuple[str, list[str]]] = []
     clusters = plan.get("clusters", {})
@@ -131,9 +135,17 @@ def unenriched_clusters(
         if not steps:
             missing.append("action_steps")
         elif issue_count < 5 and len(steps) < issue_count:
-            missing.append(
-                f"action_steps (have {len(steps)}, need >= {issue_count} for small cluster)"
-            )
+            covered = {
+                str(ref)
+                for step in steps
+                if isinstance(step, dict)
+                for ref in (step.get("issue_refs") or [])
+            }
+            if not all(str(iid) in covered for iid in issue_ids):
+                missing.append(
+                    f"action_steps (have {len(steps)}, need >= {issue_count} "
+                    "for small cluster — or cover every issue via step issue_refs)"
+                )
         if missing:
             gaps.append((name, missing))
     return gaps
