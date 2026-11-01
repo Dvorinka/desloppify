@@ -194,9 +194,9 @@ def save_plan(plan: PlanModel | dict, path: Path | None = None) -> None:
         raise
 
 
-def plan_path_for_state(state_path: Path) -> Path:
+def plan_path_for_state(state_path: Path | str) -> Path:
     """Derive plan.json path from a state file path."""
-    return state_path.parent / "plan.json"
+    return Path(state_path).parent / "plan.json"
 
 
 def has_living_plan(path: Path | None = None) -> bool:
