@@ -38,7 +38,7 @@ def _require_enriched_clusters(plan: dict, state: dict | None = None) -> bool:
     for name, missing in gaps:
         print(colorize(f"    {name}: missing {', '.join(missing)}", "yellow"))
     print(colorize("  Small clusters (<5 issues) need at least 1 action step per issue.", "dim"))
-    print(colorize('  Fix: desloppify plan cluster update <name> --steps "step1" "step2"', "dim"))
+    print(colorize('  Fix: desloppify plan cluster update <name> --add-step "step title" --detail "sub-points"', "dim"))
     return False
 
 

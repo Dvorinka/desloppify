@@ -303,3 +303,41 @@ def test_dimension_trajectories_windows_recent_investment() -> None:
         history_wider, {"Test health": {"strict": 70.0}}, items, window=2
     )["Test health"]
     assert wider.recent_investment == 2
+
+
+def test_strategist_dimension_map_and_done_cluster_fallback() -> None:
+    """#900: mechanical findings attribute via detector→dimension wiring;
+    execution_status=done clusters surface in completed_clusters."""
+    dim_scores = {
+        "Code quality": {
+            "strict": 80.0,
+            "detectors": {"unused": {"potential": 10}},
+        }
+    }
+    items = {
+        "unused::a.py::f": {
+            "detector": "unused",
+            "status": "open",
+            "file": "a.py",
+            "detail": {},
+        },
+    }
+    inv = lifecycle_inventory(
+        {"work_items": items, "dimension_scores": dim_scores},
+        {"queue_order": [], "skipped": {}},
+    )
+    assert inv["backlog_by_dimension"] == {"Code quality": 1}
+
+    plan = {
+        "clusters": {
+            "dead-code": {
+                "execution_status": "done",
+                "description": "Remove dead paths",
+                "issue_ids": ["a", "b", "c"],
+            },
+            "naming": {"execution_status": "in_progress", "issue_ids": ["d"]},
+        }
+    }
+    summaries = completed_cluster_summary_from_plan(plan, {})
+    assert [s.name for s in summaries] == ["dead-code"]
+    assert summaries[0].issue_count == 3

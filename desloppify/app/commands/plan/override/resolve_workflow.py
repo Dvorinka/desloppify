@@ -87,7 +87,7 @@ STAGE_COACHING = {
         commands=(
             '    desloppify plan cluster create <name> --description "..."',
             "    desloppify plan cluster add <name> <issue-patterns>",
-            '    desloppify plan cluster update <name> --steps "step1" "step2"',
+            '    desloppify plan cluster update <name> --add-step "step1"',
             "    {organize_manual_command}",
         ),
         footer=("  All manual clusters must have descriptions and action_steps.",),

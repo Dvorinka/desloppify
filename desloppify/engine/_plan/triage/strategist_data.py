@@ -164,12 +164,34 @@ def _trend_from_delta(delta: float, *, stagnant_threshold: float = 0.5) -> str:
     return "stable"
 
 
-def _dimension_name_for_issue(issue: dict[str, Any]) -> str:
+def _detector_dimension_map(dimension_scores: dict[str, Any]) -> dict[str, str]:
+    """detector → dimension name, from dimension_scores' detectors wiring (#900)."""
+    mapping: dict[str, str] = {}
+    if not isinstance(dimension_scores, dict):
+        return mapping
+    for name, entry in dimension_scores.items():
+        if not isinstance(entry, dict):
+            continue
+        detectors = entry.get("detectors")
+        keys = detectors.keys() if isinstance(detectors, dict) else (
+            detectors if isinstance(detectors, list) else ()
+        )
+        for detector in keys:
+            mapping.setdefault(str(detector), str(name))
+    return mapping
+
+
+def _dimension_name_for_issue(
+    issue: dict[str, Any],
+    detector_to_dim: dict[str, str] | None = None,
+) -> str:
     """Extract dimension from an issue.
 
     Checks both ``detail.dimension`` (review issues) and
     ``detail.dimension_name`` (synthetic/work-queue items) because this
     function is called on all work_items, not just review issues.
+    Falls back to the detector → dimension map so mechanical findings
+    without an explicit detail.dimension still attribute correctly.
     """
     detail = issue.get("detail", {})
     if isinstance(detail, dict):
@@ -177,6 +199,10 @@ def _dimension_name_for_issue(issue: dict[str, Any]) -> str:
             value = detail.get(key)
             if isinstance(value, str) and value.strip():
                 return value.strip()
+    if detector_to_dim:
+        mapped = detector_to_dim.get(str(issue.get("detector", "")))
+        if mapped:
+            return mapped
     return "unknown"
 
 
@@ -294,6 +320,7 @@ def dimension_trajectories(
         ),
         default="",
     )
+    detector_to_dim = _detector_dimension_map(current_dim_scores)
     investment_by_dim: Counter[str] = Counter()
     for issue in work_items.values():
         if not isinstance(issue, dict):
@@ -378,14 +405,17 @@ def file_churn_hotspots(work_items: dict[str, dict[str, Any]]) -> list[FileChurn
     return hotspots
 
 
-def rework_loop_detection(work_items: dict[str, dict[str, Any]]) -> list[ReworkLoopEntry]:
+def rework_loop_detection(
+    work_items: dict[str, dict[str, Any]],
+    detector_to_dim: dict[str, str] | None = None,
+) -> list[ReworkLoopEntry]:
     grouped: dict[str, dict[str, Any]] = defaultdict(
         lambda: {"resolved": 0, "open": 0, "reopen": 0, "files": set()}
     )
     for issue in work_items.values():
         if not isinstance(issue, dict):
             continue
-        dimension = _dimension_name_for_issue(issue)
+        dimension = _dimension_name_for_issue(issue, detector_to_dim)
         if dimension == "unknown":
             continue
         bucket = grouped[dimension]
@@ -469,6 +499,30 @@ def completed_cluster_summary_from_plan(
                 thesis=str(cluster.get("thesis") or cluster.get("description") or "").strip(),
                 issue_count=len(issue_ids) if isinstance(issue_ids, list) else 0,
                 completed_at=completed_at,
+            )
+        )
+    if summaries:
+        return summaries[-10:]
+
+    # Fallback: live clusters carry execution_status="done" without ever
+    # being copied into plan["completed_clusters"] (#900).
+    clusters = plan.get("clusters", {})
+    if not isinstance(clusters, dict):
+        return []
+    from desloppify.engine._plan.cluster_semantics import EXECUTION_STATUS_DONE
+
+    for name, cluster in clusters.items():
+        if not isinstance(cluster, dict):
+            continue
+        if str(cluster.get("execution_status", "")) != EXECUTION_STATUS_DONE:
+            continue
+        issue_ids = cluster.get("issue_ids", [])
+        summaries.append(
+            CompletedClusterSummary(
+                name=str(name).strip() or "?",
+                thesis=str(cluster.get("thesis") or cluster.get("description") or "").strip(),
+                issue_count=len(issue_ids) if isinstance(issue_ids, list) else 0,
+                completed_at=str(cluster.get("completed_at", "")),
             )
         )
     return summaries[-10:]
@@ -617,6 +671,9 @@ def lifecycle_inventory(
         if isinstance(issue_id, str)
         and not issue_id.startswith(("triage::", "workflow::", "subjective::"))
     ]
+    detector_to_dim = _detector_dimension_map(
+        state.get("dimension_scores", {}) if isinstance(state.get("dimension_scores"), dict) else {}
+    )
     backlog_by_dimension: Counter[str] = Counter()
     if isinstance(work_items, dict):
         queued = set(prioritized_ids)
@@ -626,7 +683,7 @@ def lifecycle_inventory(
                 continue
             if issue_id in queued or issue_id in skipped_ids:
                 continue
-            backlog_by_dimension[_dimension_name_for_issue(issue)] += 1
+            backlog_by_dimension[_dimension_name_for_issue(issue, detector_to_dim)] += 1
 
     skipped_by_reason: Counter[str] = Counter()
     if isinstance(skipped, dict):
@@ -689,7 +746,14 @@ def collect_strategist_input(
             window=lookback_scans,
         ),
         file_churn=file_churn_hotspots(work_items if isinstance(work_items, dict) else {}),
-        rework_loops=rework_loop_detection(work_items if isinstance(work_items, dict) else {}),
+        rework_loops=rework_loop_detection(
+            work_items if isinstance(work_items, dict) else {},
+            _detector_dimension_map(
+                state.get("dimension_scores", {})
+                if isinstance(state.get("dimension_scores"), dict)
+                else {}
+            ),
+        ),
         completed_clusters=completed_clusters,
         execution_patterns=execution_pattern_analysis(
             plan.get("execution_log", []) if isinstance(plan.get("execution_log"), list) else []

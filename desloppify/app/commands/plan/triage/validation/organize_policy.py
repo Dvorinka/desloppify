@@ -94,7 +94,7 @@ def _clusters_enriched_or_error(plan: dict, state: dict | None = None) -> bool:
     print(colorize("  Each cluster needs a description and action steps:", "dim"))
     print(
         colorize(
-            '    desloppify plan cluster update <name> --description "what this cluster addresses" --steps "step 1" "step 2"',
+            '    desloppify plan cluster update <name> --description "what this cluster addresses" --add-step "step 1"',
             "dim",
         )
     )

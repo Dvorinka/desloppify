@@ -278,7 +278,7 @@ def _print_missing_steps(gaps: list[tuple[str, list[str]]]) -> None:
         print(colorize(f"    {name}: missing {', '.join(missing)}", "yellow"))
     print()
     print(colorize("  Fix with:", "dim"))
-    print(colorize('    desloppify plan cluster update <name> --description "..." --steps "step1" "step2"', "dim"))
+    print(colorize('    desloppify plan cluster update <name> --description "..." --add-step "step title"', "dim"))
     print(colorize('    desloppify plan cluster update <name> --add-step "step title" --detail "sub-details"', "dim"))
 
 

@@ -164,7 +164,7 @@ def evaluate_completion_readiness(
         for name, missing in gaps:
             print(colorize(f"    {name}: missing {', '.join(missing)}", "yellow"))
         print(colorize("  Small clusters (<5 issues) need at least 1 action step per issue.", "dim"))
-        print(colorize('  Fix: desloppify plan cluster update <name> --description "..." --steps "step1" "step2"', "dim"))
+        print(colorize('  Fix: desloppify plan cluster update <name> --description "..." --add-step "step title"', "dim"))
         return CompletionReadiness(ok=False, message=f"{len(gaps)} cluster(s) still need enrichment.")
 
     unclustered = unclustered_review_issues(plan, state)
