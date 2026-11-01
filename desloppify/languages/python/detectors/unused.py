@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import re
 import shutil
@@ -126,11 +127,12 @@ def _parse_pyflakes_lines(
     return entries
 
 
-def detect_unused(path: Path, category: str = "all") -> tuple[list[dict], int]:
+def detect_unused(path: Path, category: str = "all") -> tuple[list[dict] | None, int]:
     """Detect unused imports and variables using ruff.
 
     Falls back to pyflakes if ruff is not available.
-    Returns (entries, total_statements_checked).
+    Returns (entries, total_statements_checked); entries is None when
+    neither ruff nor pyflakes could run at all.
     """
     total_files = len(find_py_files(path))
 
@@ -142,7 +144,14 @@ def detect_unused(path: Path, category: str = "all") -> tuple[list[dict], int]:
     if entries is not None:
         return entries, total_files
 
-    return [], total_files
+    return None, total_files
+
+
+def _module_available(name: str) -> bool:
+    try:
+        return importlib.util.find_spec(name) is not None
+    except (ImportError, ValueError):
+        return False
 
 
 def _try_ruff(path: Path, category: str) -> list[dict] | None:
@@ -153,6 +162,8 @@ def _try_ruff(path: Path, category: str) -> list[dict] | None:
 
     exclude_dirs = _collect_exclude_dirs(path)
     ruff_executable = shutil.which("ruff")
+    if not ruff_executable and not _module_available("ruff"):
+        return None
     if ruff_executable:
         cmd = [
             ruff_executable,
@@ -208,6 +219,8 @@ def _try_ruff(path: Path, category: str) -> list[dict] | None:
 
 def _try_pyflakes(path: Path, category: str) -> list[dict] | None:
     """Fallback: try pyflakes for unused detection."""
+    if not _module_available("pyflakes"):
+        return None
     try:
         result = subprocess.run(
             [sys.executable, "-m", "pyflakes", str(path)],
