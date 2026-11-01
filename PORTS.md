@@ -73,7 +73,7 @@ against fork HEAD `3a7735d` (v1.0). Verdicts:
 | #827 CLI commit records omit cluster attribution | TRACK | |
 | #826 blind packet structure profiles go stale | TRACK | |
 | #825 triage includes inactive historical clusters | TRACK | |
-| #824 Rust multiline attributes hide annotations | PORT | rust |
+| #824 Rust multiline attributes hide annotations | DONE | metadata walk crosses `)]` tails |
 | #823 triage runner loses language/state in mixed projects | TRACK | |
 | #821 boilerplate detector drops scoring potential | TRACK | |
 | #815 mixed-language review imports remove queue items | TRACK | |
@@ -98,7 +98,7 @@ against fork HEAD `3a7735d` (v1.0). Verdicts:
 | #761 TS body extraction stops in typed params | DONE | signature-brace tracking (ported #721, d5b770e5) |
 | #759 scan output/history disagree after FP adjudication | TRACK | |
 | #758 in-file selftests reported untested | PORT | |
-| #756 Rust orphan flags custom cargo bin target | PORT | |
+| #756 Rust orphan flags custom cargo bin target | DONE | _cargo_target_paths entry roots |
 | #755 Codex ENRICH nested subagents | SKIP | runner prompt |
 | #754 triage ORGANIZE contradicts requirements | TRACK | |
 | #748 relative exclusions → Bandit keeps out-of-scope | DONE | same fix family as #916 |
