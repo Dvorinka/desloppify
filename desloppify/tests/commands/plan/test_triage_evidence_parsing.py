@@ -363,3 +363,38 @@ class TestValidateReportHasFilePaths:
             "Checked utils/helpers/format.ts and confirmed correctness."
         )
         assert not failures
+
+
+def test_summary_hash_citations_resolve_for_holistic_ids() -> None:
+    """#845: holistic ids lack hex suffixes; detail.summary_hash resolves."""
+    from desloppify.app.commands.plan.triage.stages.evidence_parsing import (
+        parse_observe_evidence,
+        resolve_short_hash_to_full_id,
+        summary_hash_index,
+    )
+
+    issues = {
+        "review::.::holistic::mid_elegance::over-nesting": {
+            "detail": {"summary_hash": "b3a8c3ea"}
+        },
+        "review::.::holistic::naming_quality::cryptic-names": {
+            "detail": {"summary_hash": "c4d9e2f1"}
+        },
+    }
+    valid_ids = set(issues)
+    hash_to_id = summary_hash_index(issues)
+
+    assert hash_to_id == {
+        "b3a8c3ea": "review::.::holistic::mid_elegance::over-nesting",
+        "c4d9e2f1": "review::.::holistic::naming_quality::cryptic-names",
+    }
+
+    report = "- hash: b3a8c3ea\n  verdict: genuine\n"
+    evidence = parse_observe_evidence(report, valid_ids, hash_to_id=hash_to_id)
+    assert len(evidence.entries) == 1
+    assert (
+        resolve_short_hash_to_full_id("b3a8c3ea", valid_ids, hash_to_id)
+        == "review::.::holistic::mid_elegance::over-nesting"
+    )
+    # Without the map the same hash is unresolvable (pre-fix behavior).
+    assert resolve_short_hash_to_full_id("b3a8c3ea", valid_ids) is None

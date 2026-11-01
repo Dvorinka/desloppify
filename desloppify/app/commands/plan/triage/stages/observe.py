@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import re
 
 from desloppify.base.output.terminal import colorize
 from desloppify.base.output.user_message import print_user_message
@@ -104,12 +105,22 @@ def cmd_stage_observe(
         parse_cluster_verdicts,
         parse_observe_evidence,
         resolve_short_hash_to_full_id,
+        summary_hash_index,
         validate_observe_evidence,
     )
 
     valid_ids = set(review_issues.keys())
+    hash_to_id = summary_hash_index(review_issues)
     cited = resolved_services.extract_issue_citations(report, valid_ids)
-    evidence = parse_observe_evidence(report, valid_ids)
+    # Holistic ids carry no hex suffix — agents cite detail.summary_hash
+    # instead; count those citations too (#845).
+    if hash_to_id:
+        cited |= {
+            hash_to_id[token]
+            for token in re.findall(r"[0-9a-f]{6,}", report.lower())
+            if token in hash_to_id
+        }
+    evidence = parse_observe_evidence(report, valid_ids, hash_to_id=hash_to_id)
     cluster_verdicts = parse_cluster_verdicts(report)
     evidence_failures = validate_observe_evidence(evidence, issue_count)
     blocking = [failure for failure in evidence_failures if failure.blocking]
@@ -141,7 +152,9 @@ def cmd_stage_observe(
     # Populate issue_dispositions from assessments using collision-aware resolution
     dispositions: dict[str, dict] = {}
     for entry in evidence.entries:
-        full_id = resolve_short_hash_to_full_id(entry.issue_hash, valid_ids)
+        full_id = resolve_short_hash_to_full_id(
+            entry.issue_hash, valid_ids, hash_to_id=hash_to_id
+        )
         if full_id:
             dispositions[full_id] = {
                 "verdict": entry.verdict,
