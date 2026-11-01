@@ -362,6 +362,50 @@ class TestPythonScanRootImports:
         assert result == {prod_a}
 
 
+class TestPythonDynamicLoadSpecs:
+    def test_spec_from_file_location_extracts_py_literal(self):
+        """#905: importlib spec_from_file_location surfaces the .py target."""
+        from desloppify.languages.python.test_coverage import (
+            parse_test_import_specs,
+        )
+
+        content = (
+            "spec = importlib.util.spec_from_file_location("
+            '"audit_job", Path(__file__).with_name("audit-job.py"))\n'
+        )
+        assert "audit-job.py" in parse_test_import_specs(content)
+
+    def test_source_file_loader_extracts_py_literal(self):
+        """#905: SourceFileLoader(name, path) surfaces the .py target."""
+        from desloppify.languages.python.test_coverage import (
+            parse_test_import_specs,
+        )
+
+        content = (
+            'loader = SourceFileLoader("audit_job", "jobs/audit-job.py")\n'
+        )
+        assert "jobs/audit-job.py" in parse_test_import_specs(content)
+
+    def test_importlib_loaded_hyphenated_module_is_tested(self, tmp_path):
+        """#905: a test loading audit-job.py via importlib counts as direct."""
+        prod = _write_file(
+            tmp_path, "audit-job.py", "def result():\n    return 42\n" * 10
+        )
+        test = _write_file(
+            tmp_path,
+            "test_audit_job.py",
+            "import importlib.util\n"
+            "spec = importlib.util.spec_from_file_location("
+            '"audit_job", Path(__file__).with_name("audit-job.py"))\n'
+            "module = importlib.util.module_from_spec(spec)\n"
+            "spec.loader.exec_module(module)\n"
+            "class AuditTests(unittest.TestCase):\n"
+            "    def test_result(self):\n"
+            "        self.assertEqual(module.result(), 42)\n",
+        )
+        assert import_based_mapping({}, {test}, {prod}, "python") == {prod}
+
+
 # ── _resolve_barrel_reexports ────────────────────────────
 
 

@@ -47,6 +47,11 @@ BARREL_BASENAMES: set[str] = set()
 # Common source layout prefixes for src-layout projects (PEP 621).
 _SRC_PREFIXES = ("src/",)
 _RUNPY_PATH_RE = re.compile(r"runpy\.run_path\s*\(([^\n]*)")
+# importlib-style explicit file loads (#905): spec_from_file_location /
+# SourceFileLoader / imp.load_source carry the target as a .py literal.
+_IMPORTLIB_PATH_RE = re.compile(
+    r"(?:spec_from_file_location|SourceFileLoader|load_source)\s*\(([^\n]*)"
+)
 _PY_FILE_STR_RE = re.compile(r"[\"']([^\"']+\.py)[\"']")
 
 
@@ -140,7 +145,10 @@ def parse_test_import_specs(content: str) -> list[str]:
             if imported_name:
                 specs.append(f"{package}.{imported_name}")
     # runpy.run_path(...) targets are file paths, not module specs (#814).
+    # importlib loaders follow the same rule (#905).
     for m in _RUNPY_PATH_RE.finditer(content):
+        specs.extend(_PY_FILE_STR_RE.findall(m.group(1)))
+    for m in _IMPORTLIB_PATH_RE.finditer(content):
         specs.extend(_PY_FILE_STR_RE.findall(m.group(1)))
     return specs
 
