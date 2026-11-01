@@ -64,7 +64,7 @@ from desloppify.languages.framework import (
     make_lang_run,
     reset_script_import_caches,
 )
-from desloppify.state_io import StateModel, ensure_state_defaults, save_state, utc_now
+from desloppify.state_io import StateModel, ensure_state_defaults, save_state, state_lock, utc_now
 from desloppify.state_scoring import ScoreSnapshot, score_snapshot
 
 _WONTFIX_DECAY_SCANS_DEFAULT = 20
@@ -429,58 +429,82 @@ def run_scan_generation(
         disable_file_cache()
 
 
+# State keys mutated during scan prep (before the merge) that must be carried
+# into the freshly loaded state when merging under the lock.
+_SCAN_PREP_STATE_KEYS = (
+    "lang_capabilities",
+    "review_cache",
+    "subjective_assessments",
+)
+
+
 def merge_scan_results(
     runtime: ScanRuntime,
     issues: list[dict[str, Any]],
     potentials: dict[str, object],
     codebase_metrics: dict[str, object] | None,
 ) -> ScanMergeResult:
-    """Merge issues into persistent state and return diff + previous score snapshot."""
+    """Merge issues into persistent state and return diff + previous score snapshot.
+
+    The merge runs under ``state_lock``: state is reloaded from disk under an
+    exclusive lock, the scan delta is merged into that fresh state, and the
+    result is saved on lock release. Concurrent commands (another scan, a
+    resolve, a suppress) can no longer be clobbered by a stale read-modify-write.
+    """
     scan_path_rel = rel(str(runtime.path))
-    prev_scan_path = runtime.state.get("scan_path")
-    path_changed = prev_scan_path is not None and prev_scan_path != scan_path_rel
-
-    if not path_changed:
-        prev = score_snapshot(runtime.state)
-    else:
-        prev = ScoreSnapshot(None, None, None, None)
-    prev_dim_scores = (
-        runtime.state.get("dimension_scores", {}) if not path_changed else {}
-    )
-
-    if runtime.lang and runtime.lang.zone_map is not None:
-        runtime.state["zone_distribution"] = runtime.lang.zone_map.counts()
-    _persist_scan_coverage(runtime.state, runtime.lang)
-
     target_score = target_strict_score_from_config(runtime.config)
     runtime.prev_last_scan = str(runtime.state.get("last_scan", "") or "") or None
 
-    diff = merge_scan(
-        runtime.state,
-        issues,
-        options=MergeScanOptions(
-            lang=runtime.lang.name if runtime.lang else None,
-            scan_path=scan_path_rel,
-            force_resolve=getattr(runtime.args, "force_resolve", False),
-            exclude=get_exclusions(),
-            potentials=potentials,
-            codebase_metrics=codebase_metrics,
-            include_slow=runtime.effective_include_slow,
-            ignore=runtime.config.get("ignore", []),
-            subjective_integrity_target=target_score,
-            project_root=str(get_project_root()),
-            zone_map=runtime.lang.zone_map if runtime.lang else None,
-        ),
-    )
-
-    mark_stale_holistic(
-        runtime.state, runtime.config.get("holistic_max_age_days", 30)
-    )
-    save_state(
-        runtime.state,
+    with state_lock(
         runtime.state_path,
         subjective_integrity_target=target_score,
-    )
+    ) as state:
+        # Carry over mutations applied to runtime.state during scan prep so the
+        # locked merge does not silently drop them.
+        prep_state = runtime.state if isinstance(runtime.state, dict) else {}
+        for key in _SCAN_PREP_STATE_KEYS:
+            if key in prep_state and prep_state[key] != state.get(key):
+                state[key] = prep_state[key]
+
+        prev_scan_path = state.get("scan_path")
+        path_changed = prev_scan_path is not None and prev_scan_path != scan_path_rel
+
+        if not path_changed:
+            prev = score_snapshot(state)
+        else:
+            prev = ScoreSnapshot(None, None, None, None)
+        prev_dim_scores = (
+            state.get("dimension_scores", {}) if not path_changed else {}
+        )
+
+        if runtime.lang and runtime.lang.zone_map is not None:
+            state["zone_distribution"] = runtime.lang.zone_map.counts()
+        _persist_scan_coverage(state, runtime.lang)
+
+        diff = merge_scan(
+            state,
+            issues,
+            options=MergeScanOptions(
+                lang=runtime.lang.name if runtime.lang else None,
+                scan_path=scan_path_rel,
+                force_resolve=getattr(runtime.args, "force_resolve", False),
+                exclude=get_exclusions(),
+                potentials=potentials,
+                codebase_metrics=codebase_metrics,
+                include_slow=runtime.effective_include_slow,
+                ignore=runtime.config.get("ignore", []),
+                subjective_integrity_target=target_score,
+                project_root=str(get_project_root()),
+                zone_map=runtime.lang.zone_map if runtime.lang else None,
+            ),
+        )
+
+        mark_stale_holistic(
+            state, runtime.config.get("holistic_max_age_days", 30)
+        )
+        # Downstream consumers (plan reconcile, reporting, badge) read the
+        # merged state via runtime.state — point it at the locked copy.
+        runtime.state = state
 
     _clear_needs_rescan_flag(runtime.config)
     runtime.scan_diff = diff
@@ -536,13 +560,13 @@ def persist_reminder_history(
     if not (narrative and "reminder_history" in narrative):
         return
 
-    runtime.state["reminder_history"] = narrative["reminder_history"]
     target_score = target_strict_score_from_config(runtime.config)
-    save_state(
-        runtime.state,
+    with state_lock(
         runtime.state_path,
         subjective_integrity_target=target_score,
-    )
+    ) as state:
+        state["reminder_history"] = narrative["reminder_history"]
+        runtime.state = state
 
 
 __all__ = [
