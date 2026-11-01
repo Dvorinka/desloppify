@@ -243,3 +243,32 @@ def test_step_completion_without_issues_keeps_legacy_behavior() -> None:
         },
     }
     assert len(auto_complete_steps(plan)) == 1
+
+
+# ── #780: --state must load the sibling plan, not the default project plan ───
+
+
+def test_load_plan_for_runtime_uses_state_sibling(tmp_path, monkeypatch) -> None:
+    from desloppify.app.commands.next import cmd as next_cmd
+
+    seen: list[object] = []
+
+    class _Runtime:
+        state_path = tmp_path / "browser" / "state-javascript.json"
+
+    monkeypatch.setattr(next_cmd, "load_plan", lambda p=None: seen.append(p) or {})
+    next_cmd._load_plan_for_runtime(_Runtime())
+    assert seen == [tmp_path / "browser" / "plan.json"]
+
+
+def test_load_plan_for_runtime_default_without_state_path(monkeypatch) -> None:
+    from desloppify.app.commands.next import cmd as next_cmd
+
+    seen: list[object] = []
+
+    class _Runtime:
+        state_path = None
+
+    monkeypatch.setattr(next_cmd, "load_plan", lambda p=None: seen.append(p) or {})
+    next_cmd._load_plan_for_runtime(_Runtime())
+    assert seen == [None]
