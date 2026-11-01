@@ -57,6 +57,21 @@ Upstream issue/PR triage lives in [PORTS.md](PORTS.md).
   includes, unknown macros, headers parsed as C) as reduced coverage and
   falls back to regex checks; unsafe-API names require identifier
   boundaries (upstream PR #899).
+- Python `unused` detector reports reduced coverage when neither ruff nor
+  pyflakes can run, instead of a silent zero (upstream #853).
+- `lru_cache_mutable` no longer flags immutable constructor-backed globals
+  (`re.compile`, `frozenset`, `tuple`, `MappingProxyType` over a fresh
+  immutable literal) (upstream #854).
+- Python import resolution covers nested packages under script dirs and
+  src-layout roots; `__main__`-guarded files count as entry points; Django
+  and Alembic runtime modules are recognized as framework-loaded; dynamic
+  import discovery honors exclusions (upstream #770, #769, #746, #678,
+  #849, #915, #664).
+- Python function extraction ignores `def`s inside string fixtures — the
+  AST gates which `def` tokens are real (upstream #772).
+- Implicit mixin contract detector resolves `self.<method>()` through own
+  and inherited methods instead of reporting them as undeclared host
+  attributes (upstream #847).
 
 ### Changed
 

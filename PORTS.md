@@ -17,7 +17,7 @@ against fork HEAD `3a7735d` (v1.0). Verdicts:
 | Issue | Verdict | Note |
 |---|---|---|
 | #936 coverage scan log labels denominator wrong | SKIP | log cosmetics |
-| #934 review defaults to missing src when scan_path null | PORT | same root as our (g): default path resolution |
+| #934 review defaults to missing src when scan_path null | DONE | get_default_scan_path falls back to root (fix g) |
 | #933 TS coverage/dep resolvers miss workspace exports | PORT | monorepo correctness |
 | #932 next recommends dead-useeffect autofix for README finding | SKIP | nudge wording |
 | #931 queued work auto-completes unrelated steps | TRACK | queue machinery |
@@ -29,8 +29,8 @@ against fork HEAD `3a7735d` (v1.0). Verdicts:
 | #921 test-coverage summary labels LOC potential wrong | SKIP | display |
 | #919 cluster resolve rejects cluster shown by next | TRACK | |
 | #918/#917 Windows triage UTF-8 / npm codex.cmd quoting | SKIP | Windows runner |
-| #916 relative scan roots → relative Bandit exclusions | PORT | exclusion correctness (has PR #897/#914) |
-| #915 Python dynamic import discovery ignores exclusions | PORT | |
+| #916 relative scan roots → relative Bandit exclusions | DONE | ported #897+#904 absolute exclusion dirs |
+| #915 Python dynamic import discovery ignores exclusions | DONE | find_py_files now used |
 | #909 Windows JS dep graph zero import edges | SKIP | Windows tree-sitter |
 | #908 blind review prompts leak prior subjective scores | TRACK | review pipeline |
 | #907 Python external-test mapping loses import roots | PORT | coverage mapping |
@@ -51,17 +51,17 @@ against fork HEAD `3a7735d` (v1.0). Verdicts:
 | #882 repeated strategist identifiers erase evidence | TRACK | |
 | #873 duplicate detector compares nested callbacks to container | PORT | dupes detector |
 | #872 accepting unchanged findings schedules another review | TRACK | |
-| #867 cppcheck batching → cross-batch unused FPs | PORT | cxx |
+| #867 cppcheck batching → cross-batch unused FPs | DONE (class) | covered by ported #869 whole-program pass |
 | #866 C++ test import mapping behind headers | PORT | |
 | #863 strict score penalizes auto_resolved | TRACK | scoring semantics |
 | #859 C++ orphan detector misclassifies Unreal modules | SKIP | Unreal-specific |
 | #858 TS coverage transitive_only for rendered components | PORT | |
 | #856 codex --scan-after-import blocked by new queue | DONE (class) | `--rescan` is the sanctioned bypass (fix f) |
 | #855 plan skip restoration leaves stale reopened metadata | TRACK | |
-| #854 lru_cache_mutable flags immutable ctor globals | PORT | python detector |
-| #853 Python unused detector silent zero without Ruff | PORT | tool-missing surfacing |
-| #849 Python orphan misses Alembic runtime modules | PORT | |
-| #847 mixin contract misses inherited methods | PORT | |
+| #854 lru_cache_mutable flags immutable ctor globals | DONE | |
+| #853 Python unused detector silent zero without Ruff | DONE | missing-tool coverage |
+| #849 Python orphan misses Alembic runtime modules | DONE | |
+| #847 mixin contract misses inherited methods | DONE | |
 | #846/#801 dict_keys FPs for fallbacks/aliases | PORT | python detector |
 | #845 observe triage: holistic issues can't be cited by hash | TRACK | |
 | #842 RequestInit credentials flagged as secret | DONE (class) | value-based gate (fix b) — `credentials: "include"` has no secret value |
@@ -92,31 +92,31 @@ against fork HEAD `3a7735d` (v1.0). Verdicts:
 | #784 reflect permits defer but validation rejects it | TRACK | |
 | #780 next --state loads wrong plan | TRACK | |
 | #779/#779 selected-dimension import requires unselected | TRACK | |
-| #772 Python dup detector parses string fixtures | PORT | |
-| #771 selftest suites treated as untested | PORT | |
-| #770/#769 Python orphan misses nested pkg/__main__ CLIs | PORT | |
+| #772 Python dup detector parses string fixtures | DONE | AST-gated extraction |
+| #771 selftest suites treated as untested | PORT | partial — import edges fixed via #770; *_selftest coverage mapping still open |
+| #770/#769 Python orphan misses nested pkg/__main__ CLIs | DONE | source_dir roots + __main__ guard hook |
 | #761 TS body extraction stops in typed params | PORT | |
 | #759 scan output/history disagree after FP adjudication | TRACK | |
 | #758 in-file selftests reported untested | PORT | |
 | #756 Rust orphan flags custom cargo bin target | PORT | |
 | #755 Codex ENRICH nested subagents | SKIP | runner prompt |
 | #754 triage ORGANIZE contradicts requirements | TRACK | |
-| #748 relative exclusions → Bandit keeps out-of-scope | PORT | same fix family as #916 |
-| #746 Python src-layout imports orphaned at root scan | PORT | |
-| #728 bandit not registered under [full] extras | PORT | packaging |
+| #748 relative exclusions → Bandit keeps out-of-scope | DONE | same fix family as #916 |
+| #746 Python src-layout imports orphaned at root scan | DONE | src/ resolution root |
+| #728 bandit not registered under [full] extras | DONE | module-importable bandit check (ported #762) |
 | #727 auto-detect cxx over csharp via ignores | TRACK | detection |
 | #726/#683 C# namespace co-membership as import edge | PORT | csharp graph |
 | #717/#716/#714 Windows decoding/executable/npx | SKIP | Windows |
-| #715 tree-sitter dep graph drops relative + CJS edges | PORT | js graph (has PR #874/#920) |
+| #715 tree-sitter dep graph drops relative + CJS edges | DONE | ported #874+#920 — canonical compare + require() query |
 | #709 next_lint removed in Next.js 16 | PORT | tool compat |
 | #705 tsconfig paths aliases unresolved → orphan FPs | PORT | (has PR #924/#925) |
 | #701 plan resolve auto-completes unrelated steps | TRACK | |
 | #700 Swift Xcode misdetected as TS | TRACK | detection |
-| #678 Django live modules reported dead | PORT | python orphan |
+| #678 Django live modules reported dead | DONE | framework conventions |
 | #675 cluster --depends-on replaces not appends | TRACK | (closed PR #708 exists) |
 | #674 plan skip exits 0 on zero-match | TRACK | (closed PR #706 exists) |
 | #665 importer_count misses @/ aliases | PORT | |
-| #664 Python scan parses excluded virtualenv in coupling | PORT | |
+| #664 Python scan parses excluded virtualenv in coupling | DONE | same fix as #915 — exclusion-aware finder |
 | #643 Go flat-dir counts _test.go as production | PORT | go detector |
 | #642 Go coverage misses same-package behavior tests | PORT | |
 | #641 Go signature-variance conflates receiver types | PORT | |

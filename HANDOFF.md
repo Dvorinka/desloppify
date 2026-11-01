@@ -8,17 +8,20 @@
 - PORTS.md = triage ledger. CHANGELOG.md = delta vs upstream v1.0 (3a7735d).
 
 ## Immediate next work (in order)
-1. **cxx-family merges (6 PENDING)**: upstream PRs #723, #862, #869, #899, #901, #910.
-   All conflict under `git apply --3way` in `desloppify/languages/cxx/{detectors/deps.py,
-   phases.py, detectors/security.py}` + their tests. Diffs cached locally? Re-fetch:
-   `gh pr diff <n> -R peteromallet/desloppify > /tmp/pr<n>.diff`. Merge strategy that
-   worked: apply --3way, inspect `<<<<<<< ours`/`=======`/`>>>>>>> theirs`, prefer
-   "theirs" when it's a superset fix, keep BOTH sides for adjacent test additions,
-   then run the PR's touched test files. Watch for dropped bindings (a #721 merge
-   needed `project_root` reinstated).
-2. **PORT-verdict items without PRs** (49 rows): real bugs needing original fixes —
-   mostly detector FPs in Rust/C++/C#/JVM/Python/TS. Each = own commit + test.
-3. **TRACK (61)**: deep queue/plan machinery bugs — do after detectors settle.
+1. ~~cxx-family merges~~ DONE — #723/#862/#869/#899/#901/#910 hand-merged.
+   Notable resolution choices: deps.py keeps the #862 `expanded`/`include_specs`
+   traversal over #901's `visited_by_context`; `_expand_response_tokens` moved
+   into `cxx/compile_commands.py` under #910's shared loader; cppcheck prefix
+   keeps the `{id}` template field (analysis-notice classification needs it).
+2. **PORT-verdict items** (~32 rows left in PORTS.md): Python detector +
+   orphan/exclusion families done (#853/#854/#847/#770/#769/#746/#678/#849/
+   #915/#664/#772; #771 partially — `*_selftest` coverage mapping still open).
+   Remaining bulk: TS/JS (#933/#927/#858/#838/#831/#811/#810/#761/#709/#705+
+   #924/#925/#665), C# (#893/#892/#726/#683), Go (#887/#643/#642/#641),
+   Rust (#824/#756), cxx (#903/#866), misc (#873/#806/#786, #907/#905,
+   #846/#801 dict_keys, #814 runpy coverage).
+   Fetch each issue body before fixing: `gh issue view N -R peteromallet/desloppify`.
+3. **TRACK (61)**: deep queue/plan machinery bugs — untouched, do after detectors.
 4. **New features queue**: more `--diff` polish (per-line severity levels, SARIF
    output for code-scanning upload), `--rescan` docs, maybe `desloppify review-diff`
    alias if users want it named.
