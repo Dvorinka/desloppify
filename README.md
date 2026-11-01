@@ -1,6 +1,14 @@
 # Desloppify - an agent harness to make your codebase 🤌
 
-[![PyPI version](https://img.shields.io/pypi/v/desloppify)](https://pypi.org/project/desloppify/) ![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue)
+![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue) [![Fork of peteromallet/desloppify](https://img.shields.io/badge/fork%20of-peteromallet%2Fdesloppify-lightgrey)](https://github.com/peteromallet/desloppify)
+
+> **Community continuation.** This is a maintained fork of
+> [peteromallet/desloppify](https://github.com/peteromallet/desloppify), which is
+> no longer actively maintained. This fork ports verified fixes from the
+> community and lands new ones — see [CHANGELOG.md](CHANGELOG.md) for the delta
+> against upstream and [PORTS.md](PORTS.md) for the upstream issue/PR triage
+> ledger. Issues and PRs are welcome at
+> [Dvorinka/desloppify](https://github.com/Dvorinka/desloppify).
 
 Desloppify gives your AI coding agent the tools to identify, understand, and systematically improve codebase quality. It combines mechanical detection (dead code, duplication, complexity) with subjective LLM review (naming, abstractions, module boundaries), then works through a prioritized fix loop. State persists across scans so it chips away over multiple sessions, and the scoring is designed to resist gaming.
 
@@ -22,7 +30,7 @@ Paste this prompt into your agent:
 I want you to improve the quality of this codebase. To do this, install and run desloppify.
 Run ALL of the following (requires Python 3.11+):
 
-pip install --upgrade "desloppify[full]"
+pip install --upgrade "desloppify[full] @ git+https://github.com/Dvorinka/desloppify"
 desloppify update-skill claude    # installs the full workflow guide — pick yours: claude, cursor, codex, copilot, droid, windsurf, gemini, rovodev
 
 Add .desloppify/ to your .gitignore — it contains local state that shouldn't be committed.
@@ -95,7 +103,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - run: pip install --upgrade "desloppify[full]"
+      - run: pip install --upgrade "desloppify[full] @ git+https://github.com/Dvorinka/desloppify"
       - run: desloppify scan --path . --profile ci --no-badge
       - run: desloppify status --json
 ```
@@ -145,6 +153,6 @@ If you'd like to join a community of vibe engineers who want to build beautiful 
 
 ---
 
-Issues, improvements, and PRs are hugely appreciated — [github.com/peteromallet/desloppify](https://github.com/peteromallet/desloppify).
+Issues, improvements, and PRs are hugely appreciated — [github.com/Dvorinka/desloppify](https://github.com/Dvorinka/desloppify). Credit for the original project goes to [peteromallet/desloppify](https://github.com/peteromallet/desloppify); this fork continues the line.
 
 Desloppify is free for any individual — whether working independently or at a company — to use for their own work. It is also free for open source companies to use in any capacity, including commercial. Non-open source companies who wish to commercialize it should refer to the [LICENSE](LICENSE) for transparent pricing details.
