@@ -1234,3 +1234,36 @@ class TestWorkspacePackageExports:
         production = {_write_file(tmp_path, "src/index.ts")}
         test = _write_file(tmp_path, "test/mail.test.ts")
         assert _resolve_import("@absent/pkg", test, production, "typescript") is None
+
+
+class TestPythonSelftestConvention:
+    def test_selftest_zone_classification(self):
+        """#771: *_selftest.py files classify as TEST, not production."""
+        from desloppify.engine.policy.zones import classify_file
+        from desloppify.languages.python._zones import PY_ZONE_RULES
+
+        assert classify_file("tools/backlog_flow_selftest.py", PY_ZONE_RULES) == Zone.TEST
+        assert classify_file("decision/selftest.py", PY_ZONE_RULES) == Zone.TEST
+        assert classify_file("tools/backlog_flow.py", PY_ZONE_RULES) == Zone.PRODUCTION
+
+    def test_selftest_name_maps_to_source(self):
+        """#771: X_selftest.py maps to X.py by naming convention."""
+        result = naming_based_mapping(
+            {"tools/backlog_flow_selftest.py"},
+            {"tools/backlog_flow.py"},
+            "python",
+        )
+        assert result == {"tools/backlog_flow.py"}
+
+    def test_selftest_imports_count_as_direct_coverage(self, tmp_path):
+        """#771: a selftest importing its module counts as direct coverage."""
+        prod = _write_file(
+            tmp_path, "tools/backlog_flow.py", "def run():\n    pass\n" * 10
+        )
+        test = _write_file(
+            tmp_path,
+            "tools/backlog_flow_selftest.py",
+            "import tools.backlog_flow\n"
+            "def test_flow():\n    assert tools.backlog_flow.run() is None\n",
+        )
+        assert import_based_mapping({}, {test}, {prod}, "python") == {prod}

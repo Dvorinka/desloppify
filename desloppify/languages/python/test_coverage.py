@@ -175,6 +175,13 @@ def map_test_to_source(test_path: str, production_set: set[str]) -> str | None:
         if parent:
             candidates.append(os.path.join(parent, src))
 
+    # X_selftest.py -> X.py (#771)
+    if basename.endswith("_selftest.py"):
+        src = basename[:-12] + ".py"
+        candidates.append(os.path.join(dirname, src))
+        if parent:
+            candidates.append(os.path.join(parent, src))
+
     for prod in production_set:
         prod_base = os.path.basename(prod)
         for c in candidates:
@@ -192,6 +199,9 @@ def strip_test_markers(basename: str) -> str | None:
     """Strip Python test naming markers to derive a source basename."""
     if basename.startswith("test_"):
         return basename[5:]
+    selftest = "_selftest.py"
+    if basename.endswith(selftest):
+        return basename[: -len(selftest)] + ".py"
     suffix = "_test.py"
     if basename.endswith(suffix):
         stem = basename[: -len(suffix)]

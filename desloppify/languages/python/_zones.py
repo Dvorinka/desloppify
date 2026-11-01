@@ -6,7 +6,17 @@ from desloppify.engine.policy.zones import COMMON_ZONE_RULES, Zone, ZoneRule
 
 PY_ZONE_RULES = [
     ZoneRule(Zone.GENERATED, ["/migrations/", "_pb2.py", "_pb2_grpc.py"]),
-    ZoneRule(Zone.TEST, ["test_", "_test.py", "conftest.py", "/factories/"]),
+    ZoneRule(
+        Zone.TEST,
+        [
+            "test_",
+            "_test.py",
+            "_selftest.py",
+            "selftest.py",
+            "conftest.py",
+            "/factories/",
+        ],
+    ),
     ZoneRule(
         Zone.CONFIG,
         [
