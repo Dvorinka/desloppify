@@ -42,7 +42,7 @@ against fork HEAD `3a7735d` (v1.0). Verdicts:
 | #894 (closed) scan reopens adjudicated findings | DONE upstream | |
 | #893 C# inferred property receivers → transitive_only | DONE | parse_member_bindings receiver edges |
 | #892 C# custom test runners → no_tests | DONE | "unknown" quality + broader assert spellings |
-| #888 triage step-count / queue deadlock | TRACK | |
+| #888 triage step-count / queue deadlock | PARTIAL | 7c2562b7 — step-count contradiction fixed via issue_refs coverage; subjective/objective queue deadlock remains |
 | #887 Go scanner invokes removed golangci-lint v1 flag | DONE | cmd_fn picks v2 flag by installed major |
 | #886 Windows Codex batch quoting/locale | SKIP | |
 | #885 C# field names flagged as secrets | DONE (class) | covered by value-based secret gate (fix b) |

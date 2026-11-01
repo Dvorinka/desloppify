@@ -121,3 +121,12 @@ Committed on maint/continuation:
   deadlock) — next priority.
 - Rest of triage cluster: #826 #825 #823 #821 #815 #813 #809 #805
   #785 #779 #759 #754 #898 #845 #832 #830 #827 #908, then PR rows.
+
+## Session 2026-11-01 (VI) — #888 partial
+- #888 part 1 done: unenriched_clusters accepts consolidated steps when
+  step issue_refs cover every member (fixes prompt↔validator
+  contradiction). 7c2562b7.
+- #888 part 2 OPEN: subjective/objective queue deadlock — next picks
+  mechanical cluster, plan resolve refuses because subjective::X is
+  current next item, review refuses because objective findings open.
+  Needs queue-ordering/routing work in _work_queue.
