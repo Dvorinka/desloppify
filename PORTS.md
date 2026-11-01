@@ -9,6 +9,8 @@ against fork HEAD `3a7735d` (v1.0). Verdicts:
   (codex/opencode/rovo) plumbing, languages we don't exercise, or cosmetic.
 - **TRACK** — valid bug, but touches deep queue/plan machinery; revisit after the
   core detector fixes settle.
+- **PENDING** — port attempted but conflicts with an overlapping ported PR or
+  the fork's diverged tree; retry with a manual three-way merge.
 
 ## Issues
 
@@ -131,38 +133,38 @@ against fork HEAD `3a7735d` (v1.0). Verdicts:
 | #938 require detector evidence for manual scan verification | TRACK | verification flow |
 | #937 attribute strategist work to scored dimensions | TRACK | |
 | #935 enforce trusted review coverage | TRACK | |
-| #926 Next.js entrypoints in nested packages | PORT | |
+| #926 Next.js entrypoints in nested packages | PENDING | |
 | #925/#924 TS aliases against each importer tsconfig | PORT | |
-| #920 JS import edges across scan root | PORT | |
-| #914 keep excluded/git-ignored paths out of findings | PORT | high-value FP fix |
+| #920 JS import edges across scan root | PENDING | |
+| #914 keep excluded/git-ignored paths out of findings | DONE | high-value FP fix |
 | #913/#912 Kotlin unused imports / import graph | SKIP | kotlin not exercised |
-| #911 generic autofix tools per file | PORT | |
-| #910 cxx C/C++ compilation languages in AST | PORT | |
-| #904 absolute paths from collect_exclude_dirs | PORT | |
+| #911 generic autofix tools per file | DONE | |
+| #910 cxx C/C++ compilation languages in AST | PENDING | |
+| #904 absolute paths from collect_exclude_dirs | PENDING | |
 | #902 adopt Apache-2.0 | SKIP | relicensing is upstream's call; fork keeps OSNL |
-| #901 cxx response-file/transitive header includes | PORT | |
-| #899 cxx false API matches + security fallback | PORT | |
-| #897 resolve relative scan roots before tool exclusions | PORT | pairs with #904 |
+| #901 cxx response-file/transitive header includes | PENDING | |
+| #899 cxx false API matches + security fallback | PENDING | |
+| #897 resolve relative scan roots before tool exclusions | PENDING | pairs with #904 |
 | #891 shared queue context review targets | TRACK | |
-| #890 C# precise deps + iterator control flow | PORT | |
-| #889 external scanner exclusions → absolute paths | PORT | same family as #897 |
+| #890 C# precise deps + iterator control flow | DONE | |
+| #889 external scanner exclusions → absolute paths | PENDING | same family as #897 |
 | #881 review freshness + queue prerequisites | TRACK | |
 | #880 unchanged scan corroboration invalidating reviews | TRACK | |
 | #879 persist strategy work-item resolution | TRACK | |
 | #878 Dart signature analysis | SKIP | dart |
 | #877 plan override IDs one canonical batch | TRACK | |
 | #876 Dart import semantics | SKIP | |
-| #875 ignore overlapping spans in duplicate matching | PORT | dupes |
-| #874 JS dep edges for relative paths + CommonJS | PORT | overlaps #920 — take one |
+| #875 ignore overlapping spans in duplicate matching | DONE | dupes |
+| #874 JS dep edges for relative paths + CommonJS | DONE | overlaps #920 — take one |
 | #870 completed findings preserved on cluster defer | TRACK | |
-| #869 C++ unused-function across batches | PORT | |
-| #868 nonzero status for invalid show usage | PORT | trivial CLI correctness |
+| #869 C++ unused-function across batches | PENDING | |
+| #868 nonzero status for invalid show usage | DONE | trivial CLI correctness |
 | #865 cxx Unreal automation tests | SKIP | Unreal |
-| #864 cxx header dialect + cppcheck limits | PORT | |
+| #864 cxx header dialect + cppcheck limits | DONE | |
 | #862/#861 cxx header deps / TUs as build roots | PORT | |
-| #860 cxx security findings from parser diagnostics | PORT | |
+| #860 cxx security findings from parser diagnostics | DONE | |
 | #857 preserve scan scope through review imports | TRACK | |
-| #852 ignore future-only Python facade imports | PORT | |
+| #852 ignore future-only Python facade imports | DONE | |
 | #851 configured target in review preflight | TRACK | |
 | #850 consolidated triage organize steps | TRACK | |
 | #848 filtered empty views vs completed queues | TRACK | |
@@ -172,30 +174,30 @@ against fork HEAD `3a7735d` (v1.0). Verdicts:
 | #837 review state + detector verification scope | TRACK | |
 | #836 deliberate skip dispositions across scans | TRACK | |
 | #835 queue targets + scope plans to state files | TRACK | |
-| #802 exact issue ID precedence over prefix | PORT | |
-| #762 config excludes in bandit + module-installed bandit | PORT | |
-| #750 count CommonJS require() as import edge | PORT | overlaps #874/#920 |
+| #802 exact issue ID precedence over prefix | DONE | |
+| #762 config excludes in bandit + module-installed bandit | DONE | |
+| #750 count CommonJS require() as import edge | PENDING | overlaps #874/#920 |
 | #744 integrate 27 reviewed PRs | TRACK | meta-PR — mine for port candidates |
-| #741 rust member/nested-worktree boundaries | PORT | |
+| #741 rust member/nested-worktree boundaries | DONE | |
 | #740 Kotlin operator convention imports | SKIP | |
-| #739 JVM imports in Gradle/Maven roots | PORT | |
+| #739 JVM imports in Gradle/Maven roots | DONE | |
 | #738 opencode batch payload fences | SKIP | runner |
 | #737 opencode via shutil.which on Windows | SKIP | |
-| #735 C# reachable code flagged unreachable | PORT | |
+| #735 C# reachable code flagged unreachable | PENDING | |
 | #734 Luau plugin | SKIP | new language, not a fix |
 | #731 gdscript class_name/scene refs | SKIP | |
-| #723 cxx cppcheck include-path harvesting | PORT | |
-| #722 bound Rust coverage dep resolution | PORT | |
-| #721 harden TS scanning + plan resolution | PORT | |
-| #713 harden TS project/async detection | PORT | |
-| #712 scale+correct Rust coverage mapping | PORT | |
-| #710 java PMD -f text | PORT | |
+| #723 cxx cppcheck include-path harvesting | PENDING | |
+| #722 bound Rust coverage dep resolution | PENDING | |
+| #721 harden TS scanning + plan resolution | PENDING | |
+| #713 harden TS project/async detection | DONE | |
+| #712 scale+correct Rust coverage mapping | DONE | |
+| #710 java PMD -f text | DONE | |
 | #703 Go import identifiers from package not path | DONE | ported (fix a) |
-| #699 bash sourced library usage in unused-import | PORT | |
+| #699 bash sourced library usage in unused-import | DONE | |
 | #686 preserve queue and triage scopes | TRACK | |
 | #658/#650 triage execution handoff | TRACK | |
-| #633 Go package-level test coverage credit | PORT | |
-| #620 bandit config-level excludes | PORT | overlaps #762 |
+| #633 Go package-level test coverage credit | DONE | |
+| #620 bandit config-level excludes | DONE | overlaps #762 |
 
 ## Ported in this fork (done)
 
