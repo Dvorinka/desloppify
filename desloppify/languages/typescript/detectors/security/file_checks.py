@@ -11,6 +11,7 @@ from desloppify.languages.typescript.detectors.security.patterns import (
     _EDGE_ENTRYPOINT_RE,
     _JSON_DEEP_CLONE_RE,
     _JSON_PARSE_RE,
+    _SCHEMA_VALIDATED_RE,
     _SECURITY_INVOKER_RE,
     _SERVE_ASYNC_RE,
 )
@@ -136,6 +137,10 @@ def _check_json_parse_unguarded(
         if stripped.startswith("//"):
             continue
         if _JSON_DEEP_CLONE_RE.search(line):
+            continue
+        # `schema.parse(JSON.parse(x))` — a runtime validator wraps the
+        # parse; failing loud on bad input is the intended boundary (#786).
+        if _SCHEMA_VALIDATED_RE.search(line):
             continue
         if _is_in_try_scope(lines, line_num):
             continue

@@ -233,3 +233,22 @@ class TestSecretNameFalsePositives:
         assert len(entries) == 1
         assert entries[0]["detail"]["kind"] == "hardcoded_secret_name"
 
+
+
+def test_sensitive_log_entries_skips_static_only_payload():
+    """#786: a sensitive noun in a static message is not logged data."""
+    assert rules_mod._sensitive_log_entries(
+        filepath="src/a.ts", line_num=1,
+        line='console.log("Obtaining auth tokens...")',
+    ) == []
+
+
+def test_sensitive_log_entries_keeps_dynamic_payload():
+    assert len(rules_mod._sensitive_log_entries(
+        filepath="src/a.ts", line_num=1,
+        line='console.log("token:", token)',
+    )) == 1
+    assert len(rules_mod._sensitive_log_entries(
+        filepath="src/a.ts", line_num=1,
+        line='console.log(`got ${token} back`)',
+    )) == 1

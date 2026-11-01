@@ -16,6 +16,13 @@ _OPEN_REDIRECT_RE = re.compile(
 )
 _JSON_PARSE_RE = re.compile(r"JSON\.parse\s*\(")
 _JSON_DEEP_CLONE_RE = re.compile(r"JSON\.parse\s*\(\s*JSON\.stringify\s*\(")
+# `schema.parse(JSON.parse(x))`, `zod.parse(...)`, `ajv.validate(JSON.parse..)`
+# — a validator wraps the parse on the same expression (#786).
+_SCHEMA_VALIDATED_RE = re.compile(
+    r"(?:\w+(?:\.safeParse|\.parse|\.validate)\s*\(\s*[^)]*JSON\.parse\s*\(|"
+    r"\b(?:schema|zod|ajv|validator|dto|codec)\w*\s*\(\s*JSON\.parse\s*\()",
+    re.IGNORECASE,
+)
 _SERVE_ASYNC_RE = re.compile(r"\b(?:Deno\.)?serve\s*\(\s*(?:async\s*)?")
 _EDGE_ENTRYPOINT_RE = re.compile(
     r"\bexport\s+(?:default\s+)?(?:async\s+)?function\s+(?:GET|POST|PUT|PATCH|DELETE)\b"
@@ -39,6 +46,7 @@ __all__ = [
     "_INNER_HTML_RE",
     "_JSON_DEEP_CLONE_RE",
     "_JSON_PARSE_RE",
+    "_SCHEMA_VALIDATED_RE",
     "_JWT_PAYLOAD_RE",
     "_OPEN_REDIRECT_RE",
     "_SECURITY_INVOKER_RE",
