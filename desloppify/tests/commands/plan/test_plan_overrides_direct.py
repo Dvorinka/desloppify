@@ -1047,3 +1047,31 @@ def test_validate_skip_requirements_accepts_i_have_actually_attestation() -> Non
         ),
         note="Reviewed and intentionally accepted for now.",
     )
+
+
+def test_plan_skip_zero_match_exits_nonzero(monkeypatch) -> None:
+    """#674: a pattern matching nothing must fail loudly for callers."""
+    import desloppify.app.commands.plan.override.skip as mod
+
+    monkeypatch.setattr(mod, "skip_kind_requires_attestation", lambda _k: False)
+    monkeypatch.setattr(mod, "require_issue_inventory", lambda _s: True)
+    monkeypatch.setattr(
+        mod, "command_runtime",
+        lambda _a: type("R", (), {"state": {}, "state_path": "/tmp/x.json"})(),
+    )
+    monkeypatch.setattr(mod, "_plan_file_for_state", lambda _p: "/tmp/plan.json")
+    monkeypatch.setattr(mod, "load_plan", lambda _p: {})
+    monkeypatch.setattr(mod, "resolve_ids_from_patterns", lambda *a, **k: [])
+
+    import argparse
+    from desloppify.base.exception_sets import CommandError
+
+    for fn in (mod.cmd_plan_skip, mod.cmd_plan_unskip, mod.cmd_plan_backlog):
+        import pytest
+        with pytest.raises(CommandError) as exc:
+            fn(argparse.Namespace(
+                patterns=["missing"], reason=None, review_after=None,
+                permanent=False, false_positive=False, note=None,
+                attest=None, confirm=False, strict=False,
+            ))
+        assert exc.value.exit_code == 1

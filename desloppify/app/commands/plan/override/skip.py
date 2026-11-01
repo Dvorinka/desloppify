@@ -222,8 +222,7 @@ def cmd_plan_skip(args: argparse.Namespace) -> None:
     plan = load_plan(plan_file)
     issue_ids = resolve_ids_from_patterns(state, patterns, plan=plan)
     if not issue_ids:
-        print(colorize("  No matching issues found.", "yellow"))
-        return
+        raise CommandError("No matching issues found.", exit_code=1)
 
     _warn_or_block_bulk_skip(issue_ids, confirm=bool(getattr(args, "confirm", False)))
 
@@ -312,8 +311,7 @@ def cmd_plan_unskip(args: argparse.Namespace) -> None:
         state, patterns, plan=plan, status_filter="all"
     )
     if not issue_ids:
-        print(colorize("  No matching issues found.", "yellow"))
-        return
+        raise CommandError("No matching issues found.", exit_code=1)
 
     include_protected = bool(getattr(args, "force", False))
     count, need_reopen, protected_kept = unskip_items(
@@ -388,8 +386,7 @@ def cmd_plan_backlog(args: argparse.Namespace) -> None:
         state, patterns, plan=plan, status_filter="all"
     )
     if not issue_ids:
-        print(colorize("  No matching issues found.", "yellow"))
-        return
+        raise CommandError("No matching issues found.", exit_code=1)
 
     removed = backlog_items(plan, issue_ids)
     if not removed:
