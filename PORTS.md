@@ -130,7 +130,7 @@ against fork HEAD `3a7735d` (v1.0). Verdicts:
 
 | PR | Verdict | Note |
 |---|---|---|
-| #938 require detector evidence for manual scan verification | TRACK | verification flow |
+| #938 require detector evidence for manual scan verification | DONE | 243638ba — upstream PR port |
 | #937 attribute strategist work to scored dimensions | TRACK | |
 | #935 enforce trusted review coverage | TRACK | |
 | #926 Next.js entrypoints in nested packages | DONE | |
@@ -150,7 +150,7 @@ against fork HEAD `3a7735d` (v1.0). Verdicts:
 | #889 external scanner exclusions → absolute paths | DONE | same family as #897 |
 | #881 review freshness + queue prerequisites | TRACK | |
 | #880 unchanged scan corroboration invalidating reviews | TRACK | |
-| #879 persist strategy work-item resolution | TRACK | |
+| #879 persist strategy work-item resolution | DONE | adbe6c96 — upstream PR port + queue-purge completion |
 | #878 Dart signature analysis | SKIP | dart |
 | #877 plan override IDs one canonical batch | TRACK | |
 | #876 Dart import semantics | SKIP | |
@@ -163,13 +163,13 @@ against fork HEAD `3a7735d` (v1.0). Verdicts:
 | #864 cxx header dialect + cppcheck limits | DONE | |
 | #862/#861 cxx header deps / TUs as build roots | DONE | |
 | #860 cxx security findings from parser diagnostics | DONE | |
-| #857 preserve scan scope through review imports | TRACK | |
+| #857 preserve scan scope through review imports | DONE | 15fc5571 — upstream PR port |
 | #852 ignore future-only Python facade imports | DONE | |
-| #851 configured target in review preflight | TRACK | |
+| #851 configured target in review preflight | DONE | 951f6224 — upstream PR port |
 | #850 consolidated triage organize steps | TRACK | |
-| #848 filtered empty views vs completed queues | TRACK | |
+| #848 filtered empty views vs completed queues | DONE | 3954eb8b — upstream PR port |
 | #844 scan isolation + review workflow consistency | TRACK | umbrella — review before porting |
-| #841 frozen review scope in triage collection | TRACK | |
+| #841 frozen review scope in triage collection | DONE | c6939cac — upstream PR port + empty-frozen coverage fix |
 | #840 fully covered selected-dimension reviews | TRACK | |
 | #837 review state + detector verification scope | DONE | upstream PR #837 port |
 | #836 deliberate skip dispositions across scans | DONE | da6ce101 — upstream PR #836 port |
