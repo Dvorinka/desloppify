@@ -201,10 +201,11 @@ against fork HEAD `3a7735d` (v1.0). Verdicts:
 
 | Item | Commit |
 |---|---|
-| #703 / #640 Go unused-import package identifier | (see git log, fix a) |
-| Value-based `hardcoded_secret_name` detection (#544, #842, #885 class) | (fix b) |
-| Sanitizer-aware `dangerouslySetInnerHTML` / `.innerHTML` | (fix c) |
-| Concurrent scan state races via `state_lock` merge (#254 class) | (fix d) |
-| Remove stale anti-gaming reset threats (#923); document attested-import requirements | (fix e) |
-| `scan --rescan` sanctioned mid-cycle rescan (#563, #787, #856 class) | (fix f) |
-| `scan --path` default falls back to `.` when `src/` absent (#934 class) | (fix g) |
+| #703 / #640 Go unused-import package identifier | `9b0d1544` |
+| Value-based `hardcoded_secret_name` detection (#544, #842, #885 class) | `8675f9cf` |
+| Sanitizer-aware `dangerouslySetInnerHTML` / `.innerHTML` | `e75c9473` |
+| Concurrent scan state races via `state_lock` merge (#254 class) | `993f1f53` |
+| Remove stale anti-gaming reset threats (#923); document attested-import requirements | `72ff47d3` |
+| `scan --rescan` sanctioned mid-cycle rescan (#563, #787, #856 class) | `92948def` |
+| `scan --path` default falls back to `.` when `src/` absent (#934 class) | `ca27da49` |
+| `scan --diff` PR review mode + `action.yml` + example workflow | `e2753807` |
