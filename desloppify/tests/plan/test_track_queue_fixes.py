@@ -272,3 +272,53 @@ def test_load_plan_for_runtime_default_without_state_path(monkeypatch) -> None:
     monkeypatch.setattr(next_cmd, "load_plan", lambda p=None: seen.append(p) or {})
     next_cmd._load_plan_for_runtime(_Runtime())
     assert seen == [None]
+
+
+# ── #727: auto-detect file counting honors configured exclusions ────────────
+
+
+def test_scannable_file_count_skips_excluded_dirs(tmp_path) -> None:
+    from desloppify.languages._framework.registry import resolution
+    from desloppify.base.discovery import source as source_mod
+
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "a.cs").write_text("class A {}")
+    (tmp_path / "packages").mkdir()
+    for i in range(10):
+        (tmp_path / "packages" / f"h{i}.h").write_text("#pragma once")
+
+    class _Cfg:
+        def file_finder(self, root):
+            return sorted(str(p) for p in root.rglob("*") if p.is_file())
+
+    monkey_excl = source_mod.resolve_runtime_context()
+    old = monkey_excl.exclusions
+    try:
+        monkey_excl.exclusions = ("packages",)
+        assert resolution._scannable_file_count(_Cfg(), tmp_path) == 1
+        # Without the exclusion the vendored headers dominate the count.
+        monkey_excl.exclusions = ()
+        assert resolution._scannable_file_count(_Cfg(), tmp_path) == 11
+    finally:
+        monkey_excl.exclusions = old
+
+
+def test_scannable_file_count_skips_glob_exclusions(tmp_path) -> None:
+    from desloppify.languages._framework.registry import resolution
+    from desloppify.base.discovery import source as source_mod
+
+    (tmp_path / "gen").mkdir()
+    (tmp_path / "gen" / "a.gen.cs").write_text("class G {}")
+    (tmp_path / "b.cs").write_text("class B {}")
+
+    class _Cfg:
+        def file_finder(self, root):
+            return sorted(str(p) for p in root.rglob("*.cs") if p.is_file())
+
+    ctx = source_mod.resolve_runtime_context()
+    old = ctx.exclusions
+    try:
+        ctx.exclusions = ("gen/*.gen.cs",)
+        assert resolution._scannable_file_count(_Cfg(), tmp_path) == 1
+    finally:
+        ctx.exclusions = old

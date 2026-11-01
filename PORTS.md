@@ -104,7 +104,7 @@ against fork HEAD `3a7735d` (v1.0). Verdicts:
 | #748 relative exclusions → Bandit keeps out-of-scope | DONE | same fix family as #916 |
 | #746 Python src-layout imports orphaned at root scan | DONE | src/ resolution root |
 | #728 bandit not registered under [full] extras | DONE | module-importable bandit check (ported #762) |
-| #727 auto-detect cxx over csharp via ignores | TRACK | detection |
+| #727 auto-detect cxx over csharp via ignores | DONE | exclusion-aware fallback count + sln/slnx/csproj/fsproj/Directory.Packages.props markers |
 | #726/#683 C# namespace co-membership as import edge | DONE | co-membership via identifiers (#890) + FQ-ref edges |
 | #717/#716/#714 Windows decoding/executable/npx | SKIP | Windows |
 | #715 tree-sitter dep graph drops relative + CJS edges | DONE | ported #874+#920 — canonical compare + require() query |
