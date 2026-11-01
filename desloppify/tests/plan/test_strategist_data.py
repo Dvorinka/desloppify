@@ -252,3 +252,54 @@ def test_execution_inventory_commit_history_and_collect_strategist_input() -> No
     assert strategist_input.completed_clusters[0].name == "cluster-a"
     assert strategist_input.commit_history.total_commits == 1
     assert strategist_input.prioritized_ids == ["review::src/a.py::1"]
+
+
+def test_dimension_trajectories_windows_recent_investment() -> None:
+    """#883: recent_investment counts only resolutions inside the score
+    window — lifetime history and untimestamped resolutions do not."""
+    history = [
+        {
+            "timestamp": "2026-03-02T00:00:00+00:00",
+            "dimension_scores": {"Test health": {"strict": 70.0}},
+        }
+    ]
+    items = {
+        "strategy::old-evidence-audit": {
+            "detector": "strategy",
+            "status": "fixed",
+            "resolved_at": "2000-01-01T00:00:00+00:00",
+            "work_item_kind": "workflow_action",
+            "detail": {"dimension": "Test health"},
+        },
+        "review::b.py::2": {
+            "detector": "review",
+            "status": "fixed",
+            "resolved_at": "2026-03-03T00:00:00+00:00",
+            "detail": {"dimension": "Test health"},
+        },
+        "review::c.py::3": {
+            "detector": "review",
+            "status": "fixed",
+            "detail": {"dimension": "Test health"},
+        },
+    }
+    result = dimension_trajectories(
+        history, {"Test health": {"strict": 70.0}}, items, window=1
+    )["Test health"]
+    assert result.strict_scores == [70.0]
+    # The 2000 resolution and the untimestamped one are not demonstrably
+    # recent; only the in-window resolution counts.
+    assert result.recent_investment == 1
+
+    # Widening the window's time span admits older resolutions.
+    history_wider = [
+        {
+            "timestamp": "1999-12-31T00:00:00+00:00",
+            "dimension_scores": {"Test health": {"strict": 60.0}},
+        },
+        *history,
+    ]
+    wider = dimension_trajectories(
+        history_wider, {"Test health": {"strict": 70.0}}, items, window=2
+    )["Test health"]
+    assert wider.recent_investment == 2

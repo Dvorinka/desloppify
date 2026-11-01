@@ -280,12 +280,34 @@ def dimension_trajectories(
             if strict is not None:
                 historical[str(name)].append(round(strict, 2))
 
+    # "Recent" means inside the same window as the score trajectory (#883):
+    # resolutions older than the earliest windowed history entry are
+    # lifetime activity, not recent investment. Untimestamped resolutions
+    # cannot be shown to be recent and are not counted when the window is
+    # bounded. With no windowed timestamp at all the window is unboundable
+    # and every retained resolution counts (legacy behavior).
+    window_start = min(
+        (
+            str(entry.get("timestamp", "")).strip()
+            for entry in recent
+            if str(entry.get("timestamp", "")).strip()
+        ),
+        default="",
+    )
     investment_by_dim: Counter[str] = Counter()
     for issue in work_items.values():
         if not isinstance(issue, dict):
             continue
-        if issue.get("resolved_at") or str(issue.get("status", "")) in _ACTIVELY_RESOLVED_STATUSES:
-            investment_by_dim[_dimension_name_for_issue(issue)] += 1
+        if not (
+            issue.get("resolved_at")
+            or str(issue.get("status", "")) in _ACTIVELY_RESOLVED_STATUSES
+        ):
+            continue
+        if window_start:
+            resolved_at = str(issue.get("resolved_at") or "").strip()
+            if not resolved_at or resolved_at < window_start:
+                continue
+        investment_by_dim[_dimension_name_for_issue(issue)] += 1
 
     names = set(historical) | {
         str(name)
