@@ -133,6 +133,8 @@ def test_compile_database_expands_headers_in_each_include_context(tmp_path):
     assert graph[str(shared)]["imports"] == {str(first_variant), str(second_variant)}
     assert graph[str(first_variant)]["importers"] == {str(shared)}
     assert graph[str(second_variant)]["importers"] == {str(shared)}
+
+
 def test_compile_database_expands_response_files_and_follows_header_includes(tmp_path):
     source = _write(tmp_path, "src/unit.cpp", '#include "Public/api.hpp"\n')
     public = _write(
@@ -161,13 +163,11 @@ def test_compile_database_expands_response_files_and_follows_header_includes(tmp
 
 
 def test_response_file_cycles_and_missing_files_do_not_invent_includes(tmp_path):
-    from desloppify.languages.cxx.detectors.deps import _parse_command_tokens
+    from desloppify.languages.cxx.compile_commands import _expand_response_tokens
 
     (tmp_path / "a.rsp").write_text("@b.rsp -Iinclude")
     (tmp_path / "b.rsp").write_text("@a.rsp -DVALUE=1")
-    tokens = _parse_command_tokens(
-        {"directory": str(tmp_path), "arguments": ["clang++", "@a.rsp", "@missing.rsp"]}
-    )
+    tokens = _expand_response_tokens(["clang++", "@a.rsp", "@missing.rsp"], tmp_path)
     assert tokens == ["clang++", "-DVALUE=1", "-Iinclude", "@missing.rsp"]
 
 
@@ -198,3 +198,27 @@ def test_shared_header_keeps_each_translation_units_include_context(tmp_path):
         str(first_config.resolve()),
         str(second_config.resolve()),
     }
+
+
+def test_relative_compile_directory_is_relative_to_database(tmp_path, monkeypatch):
+    source = _write(tmp_path, "src/main.c", '#include "generated.h"\n')
+    header = _write(tmp_path, "generated/generated.h", "#pragma once\n")
+    (tmp_path / "build").mkdir()
+    (tmp_path / "compile_commands.json").write_text(
+        json.dumps(
+            [
+                {
+                    "directory": "build",
+                    "file": "../src/main.c",
+                    "arguments": ["cc", "-I../generated", "-c", "../src/main.c"],
+                }
+            ]
+        )
+    )
+    unrelated = tmp_path / "other"
+    unrelated.mkdir()
+    monkeypatch.chdir(unrelated)
+
+    graph = build_cxx_dep_graph(tmp_path)
+
+    assert str(header) in graph[str(source)]["imports"]

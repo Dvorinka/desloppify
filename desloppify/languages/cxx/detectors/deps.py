@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-import json
 import os
 import re
-import shlex
 from pathlib import Path
 from typing import Any
 
@@ -14,6 +12,7 @@ from desloppify.engine.detectors.graph import finalize_graph
 from desloppify.languages._framework.treesitter.imports.resolvers_backend import (
     resolve_cxx_include,
 )
+from desloppify.languages.cxx.compile_commands import load_compile_commands
 from desloppify.languages.cxx.extractors import find_cxx_files
 
 _TRANSLATION_UNIT_SUFFIXES = frozenset({".c", ".cc", ".cpp", ".cxx"})
@@ -61,51 +60,6 @@ def _read_include_specs(filepath: str) -> list[tuple[str, bool]]:
         (match.group(2).strip(), match.group(1) == '"')
         for match in _INCLUDE_RE.finditer(content)
     ]
-
-
-def _expand_response_tokens(
-    tokens: list[str], directory: Path, active: frozenset[Path] = frozenset()
-) -> list[str]:
-    """Read compiler response files as arguments, never as shell commands."""
-    expanded: list[str] = []
-    for token in tokens:
-        if not token.startswith("@") or len(token) == 1:
-            expanded.append(token)
-            continue
-        response = Path(token[1:])
-        if not response.is_absolute():
-            response = directory / response
-        response = response.resolve()
-        if response in active or len(active) >= 16:
-            continue
-        try:
-            nested = shlex.split(
-                response.read_text(encoding="utf-8-sig"), posix=os.name != "nt"
-            )
-        except (OSError, UnicodeError, ValueError):
-            # Preserve unresolved arguments without inventing include paths.
-            expanded.append(token)
-            continue
-        expanded.extend(_expand_response_tokens(nested, directory, active | {response}))
-    return expanded
-
-
-def _parse_command_tokens(entry: dict[str, Any]) -> list[str]:
-    arguments = entry.get("arguments")
-    if isinstance(arguments, list):
-        tokens = [str(token) for token in arguments]
-    else:
-        command = entry.get("command")
-        if not isinstance(command, str) or not command.strip():
-            return []
-        tokens = shlex.split(command, posix=os.name != "nt")
-    directory_value = entry.get("directory")
-    directory = (
-        Path(directory_value)
-        if isinstance(directory_value, str) and directory_value.strip()
-        else Path.cwd()
-    )
-    return _expand_response_tokens(tokens, directory.resolve())
 
 
 def _extract_include_dirs(tokens: list[str], directory: Path) -> list[Path]:
@@ -159,60 +113,22 @@ def _resolve_with_compile_commands(
     return _match_production_file(fallback, file_index)
 
 
-def _resolve_compile_command_source(
-    entry: dict[str, Any], scan_root: Path
-) -> str | None:
-    file_value = entry.get("file")
-    if not isinstance(file_value, str) or not file_value.strip():
-        return None
-
-    directory_value = entry.get("directory")
-    directory = (
-        Path(directory_value).resolve()
-        if isinstance(directory_value, str) and directory_value.strip()
-        else scan_root
-    )
-    source_file = Path(file_value)
-    if not source_file.is_absolute():
-        source_file = directory / source_file
-    return _normalize_graph_path(source_file)
-
-
 def _build_from_compile_commands(
     path: Path,
     files: list[str],
 ) -> dict[str, dict[str, Any]]:
     graph = _init_graph(files)
     file_index = _production_file_index(files)
-    compile_commands_path = path / "compile_commands.json"
-    try:
-        payload = json.loads(compile_commands_path.read_text())
-    except (json.JSONDecodeError, OSError, UnicodeDecodeError):
-        return finalize_graph(graph)
-    if not isinstance(payload, list):
-        return finalize_graph(graph)
-
     expanded: set[tuple[str, tuple[Path, ...]]] = set()
     include_specs: dict[str, list[tuple[str, bool]]] = {}
-    for entry in payload:
-        if not isinstance(entry, dict):
-            continue
-        source = _resolve_compile_command_source(entry, path)
-        if source is None or source not in graph:
-            continue
-        directory_value = entry.get("directory")
-        directory = (
-            Path(directory_value).resolve()
-            if isinstance(directory_value, str) and directory_value.strip()
-            else path
-        )
-        tokens = _parse_command_tokens(entry)
-        if not tokens:
+    for command in load_compile_commands(path):
+        source = command.source
+        if source not in graph or not command.arguments:
             continue
         # Translation units named by a compilation database are build roots, not include-imported files.
         if Path(source).suffix.lower() in _TRANSLATION_UNIT_SUFFIXES:
             graph[source]["is_entry_point"] = True
-        include_dirs = _extract_include_dirs(tokens, directory)
+        include_dirs = _extract_include_dirs(command.arguments, command.directory)
         pending = [source]
         context = tuple(include_dirs)
         while pending:
