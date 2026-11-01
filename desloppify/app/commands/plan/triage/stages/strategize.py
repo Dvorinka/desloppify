@@ -154,8 +154,7 @@ def _create_strategic_work_items(
 
     for entry in strategic_issues:
         issue_id = f"strategy::{entry['identifier']}"
-        work_items[issue_id] = {
-            "status": "open",
+        content = {
             "detector": "strategy",
             "tier": _PRIORITY_TO_TIER.get(entry["priority"], 3),
             "priority": entry["priority"],
@@ -167,7 +166,37 @@ def _create_strategic_work_items(
                 "recommendation": entry["recommendation"],
                 "source": "strategist",
             },
-            "created_at": utc_now(),
+        }
+        existing = work_items.get(issue_id)
+        if existing is None:
+            work_items[issue_id] = {
+                "status": "open",
+                **content,
+                "created_at": utc_now(),
+            }
+            if issue_id not in queue_order:
+                new_ids.append(issue_id)
+            continue
+
+        # A repeated recommendation must not erase canonical lifecycle
+        # evidence — refresh content but keep note/attestation/timestamps.
+        existing.update(content)
+        previous_status = str(existing.get("status", "open"))
+        if previous_status == "open":
+            if issue_id not in queue_order:
+                new_ids.append(issue_id)
+            continue
+        # Re-recommended while closed: record a proper reopen transition
+        # instead of silently resetting history (#882).
+        existing["status"] = "open"
+        existing["resolved_at"] = None
+        existing["reopen_count"] = int(existing.get("reopen_count") or 0) + 1
+        existing["resolution_attestation"] = {
+            "kind": "strategist_reopen",
+            "text": f"Re-recommended by strategist (was {previous_status})",
+            "attested_at": utc_now(),
+            "scan_verified": False,
+            "previous_status": previous_status,
         }
         if issue_id not in queue_order:
             new_ids.append(issue_id)
