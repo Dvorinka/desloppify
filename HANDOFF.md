@@ -206,3 +206,14 @@ Committed on maint/continuation:
   via plan membership, globs and marker ids excluded). Takes plan for
   expansion; callers updated.
 - Log ordering (#900 complaint) was already fixed by #922 (773e54c6).
+
+## Session 2026-11-02 (X continued) — #825 + #813 closed
+- #825: organise op-minimum and report-reference checks now use
+  scoped_manual_clusters_with_issues (live slice); structure sense-check
+  prompt re-scopes the reloaded plan so done clusters can't re-enter
+  the dependency graph. 8e9234e2.
+- #813: postflight suppression of subjective dims now requires the
+  covering review issues to be executable — stale/never-run triage
+  masking no longer empties `next` while plan queue lists refresh ids.
+  String-detail legacy items guarded. 3cff7831.
+- Next: #830 #826 #823 #821 #815 #809 #805 #785 #779 #759 #754 #908 #832.

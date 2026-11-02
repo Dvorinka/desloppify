@@ -78,7 +78,7 @@ against fork HEAD `3a7735d` (v1.0). Verdicts:
 | #821 boilerplate detector drops scoring potential | TRACK | |
 | #815 mixed-language review imports remove queue items | TRACK | |
 | #814 Python coverage misses runpy.run_path tests | DONE | .py literal specs from runpy.run_path args |
-| #813 post-flight refresh in queue but next empty | TRACK | |
+| #813 post-flight refresh in queue but next empty | DONE | 3cff7831 — dim suppression only when covering review issues are executable |
 | #811 sort_no_comparator warns on canonical ordering | DONE | string-keyed Object sources exempt (d1205d5c) |
 | #810 TS async_no_await mistakes return types for bodies | DONE | signature-brace tracking (ported #721, d5b770e5) |
 | #809 review imports scan-verify + stale fresh assessments | TRACK | |
