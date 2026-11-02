@@ -71,7 +71,7 @@ against fork HEAD `3a7735d` (v1.0). Verdicts:
 | #845 observe triage: holistic issues can't be cited by hash | DONE | 23098f74 |
 | #842 RequestInit credentials flagged as secret | DONE (class) | value-based gate (fix b) — `credentials: "include"` has no secret value |
 | #838 TS props detector counts union alternatives | DONE | member-line counting (60c61251) |
-| #832 next/plan ignore plan dir implied by --state | TRACK | |
+| #832 next/plan ignore plan dir implied by --state | DONE | already fixed — cli.py sets runtime.plan_file=plan_path_for_state(--state); load_plan resolves through it; regression test added |
 | #831 TS unused ignores tsconfig.json | DONE | nearest-tsconfig walk (ported #713, 99e0c2a3) |
 | #830 partial trusted review import resolves outside dimension | DONE | 4dc9839b — payload dims bounded to packet's declared scope (allowed_dimensions) |
 | #829 schema-drift clustering quadratic | SKIP | perf |

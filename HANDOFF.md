@@ -364,6 +364,13 @@ Committed on maint/continuation:
 - Next: TRACK backlog #832 #823 #821 #815 #809 #805 #785 #779 #759 #754,
   meta #686 #658/#650 #744.
 
+## Session 2026-11-02 (XII cont.) — #832 closed
+- Already fixed in fork: cli.py sets runtime.plan_file =
+  plan_path_for_state(--state) and get_plan_file honors it, so
+  next/plan --state X read the sibling plan. Verified end-to-end;
+  pinned with test_load_plan_honors_runtime_plan_file_override.
+- Next: #823 #821 #815 #809 #805 #785 #779 #759 #754, meta rows.
+
 ## Then: Dvorinka/cloudreve
 - Issues: #412 (4.19.1 Docker image vulns — Go toolchain/modules/Alpine),
   #369 (upstream watch). PRs: #414 Android 2FA login+dark-mode form,
