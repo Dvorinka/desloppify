@@ -86,7 +86,7 @@ against fork HEAD `3a7735d` (v1.0). Verdicts:
 | #813 post-flight refresh in queue but next empty | DONE | 3cff7831 — dim suppression only when covering review issues are executable |
 | #811 sort_no_comparator warns on canonical ordering | DONE | string-keyed Object sources exempt (d1205d5c) |
 | #810 TS async_no_await mistakes return types for bodies | DONE | signature-brace tracking (ported #721, d5b770e5) |
-| #809 review imports scan-verify + stale fresh assessments | TRACK | |
+| #809 review imports scan-verify + stale fresh assessments | DONE | already fixed by #938 port (243638ba) — ran/confirmed detector gating; review/concerns lack marks_dims_stale so imports can't stale fresh assessments; isolation+scope tests cover both symptoms |
 | #808 PyPI 1.0 locale-dependent Codex decoding | SKIP | Windows |
 | #807 scan prints conflicting pre/live scores | SKIP | output |
 | #806 multi-file ShellCheck can crash silently | DONE | per-file -print0/-0/-n 1 invocation |

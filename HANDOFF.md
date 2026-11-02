@@ -397,6 +397,22 @@ Committed on maint/continuation:
   queues; imports can no longer purge other languages' work.
 - Next: #809 #805 #785 #779 #759 #754, meta rows #686 #658/#650 #744.
 
+## Session 2026-11-02 (XIII) — #809 closed
+- Already fixed in fork: the #938 port (243638ba) added ran_detectors to
+  find_suspect_detectors and confirmed_detectors gating in
+  verify_disappeared, so a review-only merge (potentials={review,concerns})
+  skips mechanical items entirely. Issue's minimal repro now returns
+  (0,0,0,set()) with the item unchanged.
+- Fresh-assessment staleness also impossible: review/concerns lack
+  marks_dims_stale, so import changed_detectors cannot reach
+  _mark_stale_on_mechanical_change.
+- Covered by existing tests test_review_import_does_not_verify_mechanical_issue
+  (fixed/wontfix/false_positive + assessment stays fresh) and
+  test_review_import_preserves_mechanical_disposition (suspect set + later
+  real scan verifies normally). Issue's exact repro pinned — no new test
+  needed beyond existing parametrization.
+- Next: #805 #785 #779 #759 #754, meta rows #686 #658/#650 #744.
+
 ## Then: Dvorinka/cloudreve
 - Issues: #412 (4.19.1 Docker image vulns — Go toolchain/modules/Alpine),
   #369 (upstream watch). PRs: #414 Android 2FA login+dark-mode form,
