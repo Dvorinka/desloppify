@@ -81,7 +81,7 @@ against fork HEAD `3a7735d` (v1.0). Verdicts:
 | #824 Rust multiline attributes hide annotations | DONE | metadata walk crosses `)]` tails |
 | #823 triage runner loses language/state in mixed projects | DONE | run_desloppify.sh bakes --lang (global, pre-command) + --state (subcommand flag) into the wrapper |
 | #821 boilerplate detector drops scoring potential | DONE | reduced coverage recorded on jscpd failure + prior potential preserved through merge |
-| #815 mixed-language review imports remove queue items | TRACK | |
+| #815 mixed-language review imports remove queue items | DONE | already fixed — review import + next/plan use plan_path_for_state(--state); per-language state files get isolated sibling plans (#832 family) |
 | #814 Python coverage misses runpy.run_path tests | DONE | .py literal specs from runpy.run_path args |
 | #813 post-flight refresh in queue but next empty | DONE | 3cff7831 — dim suppression only when covering review issues are executable |
 | #811 sort_no_comparator warns on canonical ordering | DONE | string-keyed Object sources exempt (d1205d5c) |

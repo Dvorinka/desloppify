@@ -389,6 +389,14 @@ Committed on maint/continuation:
 - Regression: tests/commands/scan/test_failed_detector_potentials.py (4).
 - Next: #815 #809 #805 #785 #779 #759 #754, meta rows.
 
+## Session 2026-11-02 (XII cont.) — #815 closed
+- Already fixed by the same sibling-plan mechanism as #832: review import
+  resolves plan via plan_path_for_state(state_file) (importing/cmd.py:228,
+  plan_sync.py:441) and next/plan read the same sibling plan via
+  runtime.plan_file. Per-language --state files → isolated execution
+  queues; imports can no longer purge other languages' work.
+- Next: #809 #805 #785 #779 #759 #754, meta rows #686 #658/#650 #744.
+
 ## Then: Dvorinka/cloudreve
 - Issues: #412 (4.19.1 Docker image vulns — Go toolchain/modules/Alpine),
   #369 (upstream watch). PRs: #414 Android 2FA login+dark-mode form,
