@@ -413,6 +413,17 @@ Committed on maint/continuation:
   needed beyond existing parametrization.
 - Next: #805 #785 #779 #759 #754, meta rows #686 #658/#650 #744.
 
+## Session 2026-11-02 (XIII cont.) — #805 closed
+- Already fixed in fork: enforce_trusted_import_coverage_gate only blocks
+  when the packet's selected dims are missing (upstream #935 port,
+  fa91641c); the coverage notice itself is computed against
+  packet_dimensions, not language-wide scored dims (upstream #840 port,
+  7eefcfd2, comment in execution_results.py names the exact scenario).
+- Existing tests cover it: explicit 18/20 subset passes, missing selected
+  dim blocks, full default selection stays fail-closed
+  (test_selected_dimension_coverage.py).
+- Next: #785 #779 #759 #754, meta rows #686 #658/#650 #744.
+
 ## Then: Dvorinka/cloudreve
 - Issues: #412 (4.19.1 Docker image vulns — Go toolchain/modules/Alpine),
   #369 (upstream watch). PRs: #414 Android 2FA login+dark-mode form,
