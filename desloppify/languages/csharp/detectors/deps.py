@@ -15,32 +15,68 @@ from desloppify.base.discovery.file_paths import resolve_path
 from desloppify.engine.detectors.graph import finalize_graph
 from desloppify.languages.csharp.detectors.deps_support_metadata import (
     expand_namespace_matches as _expand_namespace_matches,
+)
+from desloppify.languages.csharp.detectors.deps_support_metadata import (
     parse_file_metadata as _parse_file_metadata,
+)
+from desloppify.languages.csharp.detectors.deps_support_metadata import (
     parse_file_symbols as _parse_file_symbols,
+)
+from desloppify.languages.csharp.detectors.deps_support_metadata import (
     parse_member_bindings as _parse_member_bindings,
 )
 from desloppify.languages.csharp.detectors.deps_support_projects import (
     find_csproj_files as _find_csproj_files,
+)
+from desloppify.languages.csharp.detectors.deps_support_projects import (
     map_file_to_project as _map_file_to_project,
+)
+from desloppify.languages.csharp.detectors.deps_support_projects import (
     parse_csproj_references as _parse_csproj_references,
+)
+from desloppify.languages.csharp.detectors.deps_support_projects import (
     parse_project_assets_references as _parse_project_assets_references,
 )
 from desloppify.languages.csharp.detectors.deps_support_razor import (
     build_component_index as _build_component_index,
+)
+from desloppify.languages.csharp.detectors.deps_support_razor import (
     build_extension_method_index as _build_extension_method_index,
+)
+from desloppify.languages.csharp.detectors.deps_support_razor import (
     build_type_index as _build_type_index,
+)
+from desloppify.languages.csharp.detectors.deps_support_razor import (
     build_view_index as _build_view_index,
+)
+from desloppify.languages.csharp.detectors.deps_support_razor import (
     code_behind_for as _code_behind_for,
+)
+from desloppify.languages.csharp.detectors.deps_support_razor import (
     collect_ambient_usings as _collect_ambient_usings,
+)
+from desloppify.languages.csharp.detectors.deps_support_razor import (
     find_razor_files as _find_razor_files,
+)
+from desloppify.languages.csharp.detectors.deps_support_razor import (
     inherited_usings as _inherited_usings,
+)
+from desloppify.languages.csharp.detectors.deps_support_razor import (
     normalize_view_ref as _normalize_view_ref,
+)
+from desloppify.languages.csharp.detectors.deps_support_razor import (
     parse_razor_metadata as _parse_razor_metadata,
 )
 from desloppify.languages.csharp.detectors.deps_support_render import (
     build_graph_from_edge_map as _build_graph_from_edge_map,
+)
+from desloppify.languages.csharp.detectors.deps_support_render import (
     render_cycles_for_graph as _render_cycles_for_graph,
+)
+from desloppify.languages.csharp.detectors.deps_support_render import (
     render_deps_for_graph as _render_deps_for_graph,
+)
+from desloppify.languages.csharp.detectors.deps_support_render import (
     safe_resolve_graph_path as _safe_resolve_graph_path,
 )
 from desloppify.languages.csharp.extractors import (
