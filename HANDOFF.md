@@ -170,3 +170,22 @@ Committed on maint/continuation:
 - #881 committed this session; PORTS.md rows updated (#881 #844 #880
   #877 #850 #840 #891 #935 #937 #870 DONE).
 - Commit: fix: preserve review freshness and queue prerequisites (#881)
+
+## Session 2026-11-02 (X) — #888 queue deadlock closed
+- #888 part 2 done: assessment-postflight phase now fronts
+  cluster-queued mechanical work (multi-member manual clusters) ahead
+  of the stale review marker when no postflight_scan_completed marker
+  is recorded; marker stays visible behind. Fixes the next ↔
+  plan-resolve ↔ review-rerun deadlock: all three see the same front.
+- Gate narrowed to cluster-fronted items after two fork-authored tests
+  pinned the old contract: lone queued findings stay parked (resolvable
+  by id via the guard's front-planned branch; parked objective items do
+  not block the rerun gate). _clustered_execution_items filters
+  anchored items to non-auto clusters with >=2 members.
+- Regression tests: queued cluster fronts queue + collapse shows
+  cluster before marker; empty queue keeps marker-only partition.
+- Suite: 6358 passed, 2 known dry-run env failures. Commit 973c6a7b.
+- Next: #900 remaining parts (strategy:: visibility, log ordering,
+  done-cluster enrichment gate, mixed counting), then triage cluster
+  #830 #826 #825 #823 #821 #815 #813 #809 #805 #785 #779 #759 #754
+  #908 #832, then meta rows #686 #658/#650 #744.
