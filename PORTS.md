@@ -72,7 +72,7 @@ against fork HEAD `3a7735d` (v1.0). Verdicts:
 | #829 schema-drift clustering quadratic | SKIP | perf |
 | #827 CLI commit records omit cluster attribution | DONE | bf276c8c |
 | #826 blind packet structure profiles go stale | TRACK | |
-| #825 triage includes inactive historical clusters | TRACK | |
+| #825 triage includes inactive historical clusters | DONE | 8e9234e2 — structure prompt re-scoped after reload; organise op-min/reference list uses live slice |
 | #824 Rust multiline attributes hide annotations | DONE | metadata walk crosses `)]` tails |
 | #823 triage runner loses language/state in mixed projects | TRACK | |
 | #821 boilerplate detector drops scoring potential | TRACK | |

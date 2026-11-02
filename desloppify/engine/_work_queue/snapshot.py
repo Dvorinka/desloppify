@@ -39,6 +39,7 @@ from desloppify.engine._state.issue_semantics import (
     is_triage_finding,
 )
 from desloppify.engine._state.schema import StateModel
+from desloppify.engine._work_queue.helpers import slugify
 from desloppify.engine._work_queue.ranking import build_issue_items
 from desloppify.engine._work_queue.synthetic import (
     build_subjective_items,
@@ -523,14 +524,39 @@ def _build_item_partitions(
         threshold=target_strict,
         plan=effective_plan,
     )
-    # Suppress subjective dimension items when review issues already cover
-    # the same dimension — the review issues are more actionable.
+    # Suppress subjective dimension items only when the review issues that
+    # cover the dimension are actually executable — when triage staleness
+    # masks those findings, the dim item is the only visible path to the
+    # work and suppressing it renders `next` empty (#813).
+    executable_review_dims = {
+        dim
+        for item in executable_review_items
+        if isinstance(item.get("detail"), dict)
+        if (dim := str(item["detail"].get("dimension", "")).strip().lower())
+    }
+
+    def _covered_by_executable_review(item: WorkQueueItem) -> bool:
+        detail = item.get("detail")
+        if not isinstance(detail, dict):
+            return False
+        if int(detail.get("open_review_issues", 0)) <= 0:
+            return False
+        cli_keys = [str(key) for key in detail.get("cli_keys", []) or []]
+        aliases = {
+            str(detail.get("dimension", "")).strip().lower(),
+            slugify(str(detail.get("dimension_name", ""))),
+            *cli_keys,
+            *(slugify(key) for key in cli_keys),
+        }
+        aliases.discard("")
+        return bool(aliases & executable_review_dims)
+
     postflight_assessment_items = [
         item
         for item in subjective_postflight_items
         if not (
             item.get("kind") == "subjective_dimension"
-            and int((item.get("detail") or {}).get("open_review_issues", 0)) > 0
+            and _covered_by_executable_review(item)
         )
     ] + [
         item

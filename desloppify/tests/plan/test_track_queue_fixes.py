@@ -546,3 +546,57 @@ def test_unenriched_clusters_ignores_completed_clusters() -> None:
     gaps = dict(unenriched_clusters(plan))
     assert "done-batch" not in gaps
     assert gaps["live-batch"] == ["description", "action_steps"]
+
+
+def test_masked_review_findings_do_not_suppress_subjective_dims() -> None:
+    """#813: a stale-triage-hidden review finding must not empty `next`."""
+    state = {
+        "work_items": {
+            "review::src/x.py::1": {
+                "id": "review::src/x.py::1",
+                "detector": "review",
+                "status": "open",
+                "file": "src/x.py",
+                "confidence": "high",
+                "detail": {"dimension": "logic_clarity"},
+            },
+        },
+        "issues": {},
+        "scan_count": 81,
+        "scan_path": ".",
+        "last_scan": "2026-01-01T10:00:00+00:00",
+        "subjective_assessments": {
+            "logic_clarity": {
+                "score": 80.0,
+                "needs_review_refresh": True,
+                "stale_since": "2026-01-01T00:00:00+00:00",
+                "refresh_reason": "mechanical_issues_changed",
+            },
+        },
+        "dimension_scores": {
+            "Logic clarity": {
+                "score": 80.0,
+                "strict": 80.0,
+                "failing": 0,
+                "detectors": {
+                    "subjective_assessment": {"dimension_key": "logic_clarity"},
+                },
+            },
+        },
+    }
+    state["issues"] = dict(state["work_items"])
+    plan = {
+        "version": 1,
+        "queue_order": ["subjective::logic_clarity"],
+        "clusters": {},
+        "refresh_state": {
+            "lifecycle_phase": "plan",
+            "subjective_review_completed_at_scan_count": 80,
+            "postflight_scan_completed_at_scan_count": 81,
+        },
+    }
+    # Triage has never run, so the covering review finding is masked — the
+    # dim item is the only visible path and must stay in the queue.
+    snapshot = build_queue_snapshot(state, plan=plan)
+    exec_ids = [item.get("id") for item in snapshot.execution_items]
+    assert "subjective::logic_clarity" in exec_ids
