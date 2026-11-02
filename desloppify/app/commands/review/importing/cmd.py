@@ -339,7 +339,12 @@ def do_import(
     prev = score_snapshot(state)
     working_state = _build_working_state(state, state_file)
 
-    diff = import_holistic_issues(issues_data, working_state, lang.name)
+    diff = import_holistic_issues(
+        issues_data,
+        working_state,
+        lang.name,
+        allowed_dimensions=resolved_import_config.allowed_dimensions,
+    )
     label = "Holistic review"
     provisional_count = _apply_assessment_policy(
         working_state=working_state,

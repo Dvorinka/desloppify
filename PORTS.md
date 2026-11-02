@@ -68,7 +68,7 @@ against fork HEAD `3a7735d` (v1.0). Verdicts:
 | #838 TS props detector counts union alternatives | DONE | member-line counting (60c61251) |
 | #832 next/plan ignore plan dir implied by --state | TRACK | |
 | #831 TS unused ignores tsconfig.json | DONE | nearest-tsconfig walk (ported #713, 99e0c2a3) |
-| #830 partial trusted review import resolves outside dimension | TRACK | |
+| #830 partial trusted review import resolves outside dimension | DONE | pending commit — payload dims bounded to packet's declared scope (allowed_dimensions) |
 | #829 schema-drift clustering quadratic | SKIP | perf |
 | #827 CLI commit records omit cluster attribution | DONE | bf276c8c |
 | #826 blind packet structure profiles go stale | TRACK | |

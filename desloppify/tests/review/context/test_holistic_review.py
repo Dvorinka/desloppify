@@ -38,7 +38,9 @@ from desloppify.intelligence.review.prepare_batches_builders import (
 from desloppify.intelligence.review.prepare_batches_builders import (
     build_investigation_batches as _build_investigation_batches,
 )
-from desloppify.intelligence.review.prepare_batches_builders import filter_batches_to_dimensions
+from desloppify.intelligence.review.prepare_batches_builders import (
+    filter_batches_to_dimensions,
+)
 from desloppify.state import empty_state, path_scoped_issues
 
 
@@ -1663,3 +1665,102 @@ class TestFilterBatchesToDimensions:
         assert filtered[0]["dimensions"] == ["low_level_elegance"]
         assert "files_to_read" not in filtered[0]
 
+
+
+def _holistic(dim: str, n: int) -> dict:
+    return {
+        "id": f"review::src/f{n}.py::{dim}-{n}",
+        "detector": "review",
+        "status": "open",
+        "file": f"src/f{n}.py",
+        "confidence": "high",
+        "detail": {"holistic": True, "dimension": dim},
+    }
+
+
+def _state_with_findings(*dims: str) -> dict:
+    state = {
+        "work_items": {},
+        "issues": {},
+        "scan_count": 10,
+        "scan_path": ".",
+        "dimension_scores": {},
+    }
+    for dim in dims:
+        for n in range(3):
+            issue = _holistic(dim, n)
+            state["work_items"][issue["id"]] = issue
+            state["issues"][issue["id"]] = issue
+    return state
+
+
+def test_partial_import_preserves_findings_outside_dimension() -> None:
+    """#830: scoped import resolves only its declared dimension."""
+    from desloppify.intelligence.review.importing.holistic import (
+        import_holistic_issues,
+    )
+
+    state = _state_with_findings(
+        "low_level_elegance", "naming_quality", "package_organization"
+    )
+    issues_data = {
+        "issues": [
+            {
+                "dimension": "low_level_elegance",
+                "identifier": "new1",
+                "confidence": "high",
+                "summary": "new finding",
+                "evidence": "x",
+                "files": ["src/f0.py"],
+            },
+        ],
+        "assessments": {"low_level_elegance": {"score": 70.0}},
+        "review_scope": {
+            "full_sweep_included": False,
+            "imported_dimensions": ["low_level_elegance"],
+        },
+    }
+    import_holistic_issues(issues_data, state, "python")
+    leaked = [
+        fid
+        for fid, issue in state["work_items"].items()
+        if issue.get("status") != "open" and "low_level_elegance" not in fid
+    ]
+    assert leaked == []
+
+
+def test_payload_dims_cannot_widen_resolution_past_declared_scope() -> None:
+    """#830: stray dims in the runner payload stay inside packet scope."""
+    from desloppify.intelligence.review.importing.holistic import (
+        import_holistic_issues,
+    )
+
+    state = _state_with_findings(
+        "low_level_elegance", "naming_quality", "package_organization"
+    )
+    issues_data = {
+        "issues": [
+            {
+                "dimension": "naming_quality",
+                "identifier": "stray",
+                "confidence": "high",
+                "summary": "stray dim finding",
+                "evidence": "x",
+                "files": ["src/f1.py"],
+            },
+        ],
+        "assessments": {"naming_quality": {"score": 60.0}},
+        "review_scope": {"full_sweep_included": False},
+    }
+    import_holistic_issues(
+        issues_data,
+        state,
+        "python",
+        allowed_dimensions={"low_level_elegance"},
+    )
+    leaked = [
+        fid
+        for fid, issue in state["work_items"].items()
+        if issue.get("status") != "open" and "low_level_elegance" not in fid
+    ]
+    assert leaked == []

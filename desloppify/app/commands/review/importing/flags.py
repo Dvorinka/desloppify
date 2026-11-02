@@ -28,6 +28,9 @@ class ReviewImportConfig:
     attested_external: bool = False
     manual_override: bool = False
     manual_attest: str | None = None
+    # Declared dimension scope for partial imports — dims discovered inside
+    # a runner payload must not widen resolution beyond it (#830).
+    allowed_dimensions: set[str] | None = None
 
 
 def build_import_load_config(
