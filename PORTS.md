@@ -93,7 +93,7 @@ against fork HEAD `3a7735d` (v1.0). Verdicts:
 | #805 targeted re-review requires unselected dims | DONE | already fixed by #935+#840 ports — coverage gate compares against packet's selected dims only; tests cover explicit subset pass + missing-selected block |
 | #787 recovered queue item requests scan the guard rejects | DONE (class) | `--rescan` (fix f) |
 | #786 security detector FPs for static logs/JSON parsing | DONE | payload-aware log_sensitive + schema-validated json_parse |
-| #785 scan persists to wrong language state on exclusion change | TRACK | |
+| #785 scan persists to wrong language state on exclusion change | DONE | main() applies persisted exclusions before _resolve_default_path + _load_shared_runtime, so state_path and scan resolve_lang share the post-exclusion detection |
 | #784 reflect permits defer but validation rejects it | DONE | 8e893135 — upstream PR #637 port |
 | #780 next --state loads wrong plan | DONE | sibling plan via plan_path_for_state; backlog same (909d1d3a) |
 | #779/#779 selected-dimension import requires unselected | TRACK | |

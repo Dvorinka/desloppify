@@ -424,6 +424,23 @@ Committed on maint/continuation:
   (test_selected_dimension_coverage.py).
 - Next: #785 #779 #759 #754, meta rows #686 #658/#650 #744.
 
+## Session 2026-11-02 (XIII cont.) — #785 closed
+- Ordering fix: _apply_persisted_exclusions now runs in main() before
+  _resolve_default_path and _load_shared_runtime (previously state_path
+  and default-path detection ran pre-exclusion while the scan handler's
+  resolve_lang ran post-exclusion — state file and detector language could
+  disagree). _load_shared_runtime takes config= to avoid a second
+  load/print.
+- Regression: tests/commands/test_exclusion_language_ordering.py — mixed
+  package.json+Makefile project with cxx sources under excluded deps/;
+  asserts pre-exclusion detection picks cxx, post-exclusion picks
+  typescript, and runtime state path binds state-typescript.json.
+- Newly observed PRE-EXISTING suite failures (clean tree, unrelated):
+  test_run_codex_pipeline_raises_on_stage_failure (triage split modules),
+  test_phase_boilerplate_duplication_handles_none_and_entries (AttributeError
+  in shared_phases_helpers.py:185). Add to known-env-failure list.
+- Next: #779 #759 #754, meta rows #686 #658/#650 #744.
+
 ## Then: Dvorinka/cloudreve
 - Issues: #412 (4.19.1 Docker image vulns — Go toolchain/modules/Alpine),
   #369 (upstream watch). PRs: #414 Android 2FA login+dark-mode form,

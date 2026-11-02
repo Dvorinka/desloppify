@@ -156,15 +156,20 @@ def _resolve_default_path(args: argparse.Namespace) -> None:
     )
 
 
-def _load_shared_runtime(args: argparse.Namespace) -> None:
+def _load_shared_runtime(
+    args: argparse.Namespace,
+    *,
+    config: Mapping[str, Any] | None = None,
+) -> None:
     """Load config/state and attach shared objects to parsed args."""
-    config = load_config()
+    resolved_config = config if config is not None else load_config()
 
     state_file = state_path(args)
     state = load_state(state_file)
-    _apply_persisted_exclusions(args, config)
 
-    args.runtime = CommandRuntime(config=config, state=state, state_path=state_file)
+    args.runtime = CommandRuntime(
+        config=resolved_config, state=state, state_path=state_file
+    )
 
 
 def _looks_like_desloppify_checkout(root: Path) -> bool:
@@ -282,8 +287,10 @@ def main() -> None:
                 handler = _resolve_handler(args.command)
                 handler(args)
             else:
+                config = load_config()
+                _apply_persisted_exclusions(args, config)
                 _resolve_default_path(args)
-                _load_shared_runtime(args)
+                _load_shared_runtime(args, config=config)
                 handler = _resolve_handler(args.command)
                 handler(args)
     except CommandError as exc:
