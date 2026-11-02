@@ -10,7 +10,7 @@ from desloppify.engine._plan.cluster_semantics import (
     EXECUTION_STATUS_DONE,
     cluster_is_active,
 )
-from desloppify.engine._plan.constants import SYNTHETIC_PREFIXES
+from desloppify.engine._plan.constants import is_marker_id
 from desloppify.engine._plan.operations.lifecycle import clear_focus_if_cluster_empty
 from desloppify.engine._plan.operations.meta import append_log_entry
 from desloppify.engine._plan.operations.skip import resurface_stale_skips
@@ -168,7 +168,7 @@ def _referenced_plan_issue_ids(plan: PlanModel) -> set[str]:
     already_superseded = set(plan.get("superseded", {}).keys())
     return {
         fid for fid in referenced_ids - already_superseded
-        if not any(fid.startswith(prefix) for prefix in SYNTHETIC_PREFIXES)
+        if not is_marker_id(fid)
     }
 
 
@@ -265,7 +265,7 @@ def _action_referenced_plan_issue_ids(plan: PlanModel) -> set[str]:
         fid for fid in referenced_ids
         if isinstance(fid, str)
         and fid
-        and not any(fid.startswith(prefix) for prefix in SYNTHETIC_PREFIXES)
+        and not is_marker_id(fid)
     }
 
 

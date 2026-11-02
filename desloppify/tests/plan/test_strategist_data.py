@@ -258,10 +258,13 @@ def test_execution_inventory_commit_history_and_collect_strategist_input() -> No
     assert inventory["deferred_count"] == 1
     assert inventory["prioritized_ids"] == ["review::src/a.py::1"]
 
-    execution = execution_pattern_analysis(plan["execution_log"])
-    assert execution.total_resolved == 2
-    assert execution.total_done == 1
-    assert execution.total_skipped == 1
+    execution = execution_pattern_analysis(plan["execution_log"], plan=plan)
+    assert execution.resolved_issues == 2
+    assert execution.done_issues == 1
+    assert execution.skipped_issues == 1
+    assert execution.resolved_operations == 1
+    assert execution.done_operations == 1
+    assert execution.skipped_operations == 1
 
     commits = commit_history_analysis(plan["commit_log"])
     assert commits.total_commits == 1
@@ -372,3 +375,32 @@ def test_strategist_dimension_map_and_done_cluster_fallback() -> None:
     summaries = completed_cluster_summary_from_plan(plan, {})
     assert [s.name for s in summaries] == ["dead-code"]
     assert summaries[0].issue_count == 3
+
+
+def test_execution_patterns_separate_operations_from_issues() -> None:
+    """#900: cluster fronts, globs, and marker ids are not issue counts."""
+    plan = {
+        "clusters": {
+            "coverage": {
+                "name": "coverage",
+                "auto": False,
+                "issue_ids": ["smells::a.py::1", "smells::b.py::2", "smells::c.py::3"],
+            },
+        },
+    }
+    log = [
+        {"timestamp": "3026-03-01T00:00:00+00:00", "action": "done", "issue_ids": ["coverage"], "cluster_name": "coverage"},
+        {"timestamp": "3026-03-02T00:00:00+00:00", "action": "done", "issue_ids": ["smells::*", "smells::a.py::1"]},
+        {"timestamp": "3026-03-03T00:00:00+00:00", "action": "resolve", "issue_ids": ["subjective::naming_quality", "review::x.py::1"]},
+        {"timestamp": "3026-03-04T00:00:00+00:00", "action": "skip", "issue_ids": ["triage::observe", "smells::d.py::4"]},
+    ]
+    result = execution_pattern_analysis(log, plan=plan)
+    # Cluster front expands to its three members; the glob is an operation,
+    # not an issue id; markers never count as work; ids dedupe across
+    # entries (smells::a.py::1 counted once).
+    assert result.done_operations == 2
+    assert result.done_issues == 3
+    assert result.resolved_operations == 1
+    assert result.resolved_issues == 1
+    assert result.skipped_operations == 1
+    assert result.skipped_issues == 1

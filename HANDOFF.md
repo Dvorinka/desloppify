@@ -189,3 +189,20 @@ Committed on maint/continuation:
   done-cluster enrichment gate, mixed counting), then triage cluster
   #830 #826 #825 #823 #821 #815 #813 #809 #805 #785 #779 #759 #754
   #908 #832, then meta rows #686 #658/#650 #744.
+
+## Session 2026-11-02 (X continued) — #900 remaining parts
+- strategy:: visibility: new is_marker_id predicate (triage/workflow/
+  subjective) splits phase markers from persisted work. live_planned_queue_ids,
+  live_planned_queue_empty, refresh_lifecycle._is_real_queue_issue,
+  scan_issue_reconcile reference sets, and _reset_cycle_for_force_rescan
+  now treat strategy:: ids as real work — queued strategy items execute
+  through next and survive force-rescan. Strategist-created items get
+  file="." so non-root scan scopes cannot drop them.
+- Enrichment gate: unenriched_clusters skips clusters marked done whose
+  members all stayed resolved; a reopened member re-gates the cluster.
+  Two legacy-scope tests updated to keep the fixture executable.
+- Mixed counting: execution_pattern_analysis now reports *_operations
+  (log entries) vs *_issues (distinct real ids — cluster fronts expand
+  via plan membership, globs and marker ids excluded). Takes plan for
+  expansion; callers updated.
+- Log ordering (#900 complaint) was already fixed by #922 (773e54c6).

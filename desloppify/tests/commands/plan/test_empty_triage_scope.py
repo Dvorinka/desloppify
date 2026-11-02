@@ -57,6 +57,9 @@ def test_explicit_empty_scope_is_distinct_from_missing_scope():
 def test_malformed_scope_keeps_legacy_validation(value):
     plan, state, old = fixture()
     plan["epic_triage_meta"]["active_triage_issue_ids"] = value
+    # Legacy validation still gates executable clusters — completed
+    # history no longer requires enrichment (#900).
+    plan["clusters"]["past"]["execution_status"] = "active"
     assert active_triage_issue_scope(plan, state) is None
     assert [name for name, _ in unenriched_clusters(plan, state)] == ["past"]
 
@@ -89,6 +92,9 @@ def test_active_strategy_workflow_still_requires_enrichment_in_empty_review_scop
 
 def test_missing_scope_keeps_legacy_history_validation():
     plan, state, old = fixture(None)
+    # Legacy validation still gates executable clusters — completed
+    # history no longer requires enrichment (#900).
+    plan["clusters"]["past"]["execution_status"] = "active"
     assert [name for name, _ in unenriched_clusters(plan, state)] == ["past"]
 
 

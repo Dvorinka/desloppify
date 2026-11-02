@@ -123,6 +123,22 @@ def triage_scoped_plan(
     }
 
 
+def _cluster_has_open_members(cluster: dict, state: dict | None) -> bool:
+    """Whether any cluster member is still open in state.
+
+    A reopened member invalidates the done marker — the cluster is
+    executable work again and keeps its enrichment requirements.
+    """
+    if not isinstance(state, dict):
+        return False
+    work_items = state.get("work_items") or state.get("issues") or {}
+    return any(
+        isinstance(work_items.get(fid), dict)
+        and work_items[fid].get("status") == "open"
+        for fid in cluster_issue_ids(cluster)
+    )
+
+
 def unenriched_clusters(
     plan: dict,
     state: dict | None = None,
@@ -133,11 +149,18 @@ def unenriched_clusters(
     - Every cluster needs a description and at least one action_step.
     - An action step may cover multiple related issues. Step detail and issue
       references are validated by the later enrich stage.
+    - Completed clusters whose members all stayed resolved cannot execute —
+      they are history, not gaps (#900).
     """
     gaps: list[tuple[str, list[str]]] = []
     clusters = plan.get("clusters", {})
     for name in scoped_manual_clusters_with_issues(plan, state):
         cluster = clusters.get(name, {})
+        if (
+            infer_cluster_execution_status(cluster) == EXECUTION_STATUS_DONE
+            and not _cluster_has_open_members(cluster, state)
+        ):
+            continue
         missing: list[str] = []
         if not cluster.get("description"):
             missing.append("description")

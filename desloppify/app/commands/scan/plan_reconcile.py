@@ -17,7 +17,7 @@ from desloppify.base.output.fallbacks import log_best_effort_failure
 from desloppify.base.output.terminal import colorize
 from desloppify.engine._plan.constants import (
     WORKFLOW_COMMUNICATE_SCORE_ID,
-    is_synthetic_id,
+    is_marker_id,
 )
 from desloppify.engine._plan.operations.meta import append_log_entry
 from desloppify.engine._plan.persistence import load_plan, save_plan
@@ -75,17 +75,19 @@ def _reset_cycle_for_force_rescan(plan: dict[str, object]) -> bool:
     full cluster regeneration, which would wipe manual cluster items.
     """
     order: list[str] = plan.get("queue_order", [])
-    synthetic = [item for item in order if is_synthetic_id(item)]
-    if not synthetic:
+    # Only phase markers reset the cycle — strategy::* ids name persisted
+    # work items and must not be silently unqueued (#900).
+    markers = [item for item in order if is_marker_id(item)]
+    if not markers:
         return False
-    for item in synthetic:
+    for item in markers:
         order.remove(item)
     clear_score_communicated_sentinel(plan)
     clear_create_plan_sentinel(plan)
     meta = plan.get("epic_triage_meta", {})
     if isinstance(meta, dict):
         meta.pop("triage_recommended", None)
-    count = len(synthetic)
+    count = len(markers)
     if count:
         print(
             colorize(

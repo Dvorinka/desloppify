@@ -481,3 +481,68 @@ def test_assessment_postflight_without_queued_execution_keeps_partition() -> Non
     snapshot = build_queue_snapshot(state, plan=plan)
     exec_ids = [item.get("id") for item in snapshot.execution_items]
     assert exec_ids == ["subjective::error_consistency"]
+
+
+# ── #900: strategist work must match current schemas ─────────────────────────
+
+
+def test_strategy_items_are_live_queue_work() -> None:
+    """#900: queued strategy::* work items surface in `next`, not 0 items."""
+    state = {
+        "work_items": {
+            "strategy::consolidate-coverage": {
+                "id": "strategy::consolidate-coverage",
+                "detector": "strategy",
+                "file": ".",
+                "tier": 2,
+                "priority": "high",
+                "summary": "Consolidate coverage clusters",
+                "status": "open",
+                "detail": {"dimension": "unknown", "source": "strategist"},
+            },
+        },
+        "issues": {},
+        "scan_count": 5,
+        "scan_path": ".",
+        "last_scan": "2026-01-01T10:00:00+00:00",
+    }
+    plan = {
+        "version": 1,
+        "queue_order": ["strategy::consolidate-coverage"],
+        "clusters": {},
+        "refresh_state": {},
+        "epic_triage_meta": {"triaged_ids": ["strategy::consolidate-coverage"]},
+    }
+
+    snapshot = build_queue_snapshot(state, plan=plan)
+    exec_ids = [item.get("id") for item in snapshot.execution_items]
+    assert "strategy::consolidate-coverage" in exec_ids
+
+
+def test_unenriched_clusters_ignores_completed_clusters() -> None:
+    """#900: enrichment gates only clusters that can still execute."""
+    from desloppify.app.commands.plan.triage.stages.helpers import (
+        unenriched_clusters,
+    )
+
+    plan = {
+        "version": 1,
+        "queue_order": ["smells::a.py::1"],
+        "clusters": {
+            "done-batch": {
+                "name": "done-batch",
+                "auto": False,
+                "issue_ids": ["smells::old.py::9"],
+                "execution_status": "done",
+            },
+            "live-batch": {
+                "name": "live-batch",
+                "auto": False,
+                "issue_ids": ["smells::a.py::1"],
+            },
+        },
+        "refresh_state": {},
+    }
+    gaps = dict(unenriched_clusters(plan))
+    assert "done-batch" not in gaps
+    assert gaps["live-batch"] == ["description", "action_steps"]
