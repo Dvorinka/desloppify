@@ -234,3 +234,24 @@ Committed on maint/continuation:
   from the freshly built payload — structure profiles are derived data
   and can no longer go stale while scan refuses mid-cycle. 4c57f81f.
 - Next: #823 #821 #815 #809 #805 #785 #779 #759 #754 #908 #832.
+
+## Session 2026-11-02 (XI) — upstream PR/issue sweep started
+- Ported upstream PR #912 (Kotlin import graph from packages) and #939
+  (-lc -> -c) cleanly via git apply. 09556943.
+- New upstream issues to track: #944 #943 #942 #941 #940 #936 #934 #933
+  #932 #931 #930 #929 #928 #927 #923 #921 #919 #918 #917 #916 #915 #909
+  (and #908 already TRACK).
+- Open upstream PRs still to port (diffs saved /tmp/opencode/pr*.diff,
+  need manual rej merges): #890 C# deps, #897 relative scan roots,
+  #899 cxx api matches, #901 cxx response-file includes, #904 abs
+  exclude dirs, #910 cxx AST langs, #911 autofix per file, #913 Kotlin
+  unused imports, #914 excluded/gitignored paths, #920 JS import edges,
+  #924 TS importer config aliases, #925 test coverage aliases, #926
+  Next.js entrypoints, #938 detector evidence for scan verification.
+  #902 license change — skip (non-mechanical/legal).
+- Multi-repo queue from user: after desloppify ports, resolve
+  Dvorinka/cloudreve issues #412 #369 + PRs #414 #413; then
+  Dvorinka/Nothing_Modes — fix SQLiteFullException crash reports inside
+  PR #42, add to PR, merge/release it; then run desloppify on
+  Nothing_Modes only, write findings file to workspace (NO fixes), and
+  release the PR.
