@@ -544,6 +544,9 @@ Committed on maint/continuation:
 3. DONE: desloppify --lang kotlin scan --path Nothing_Modes (strict 19.2).
 4. DONE: .desloppify-findings.md written in repo root (475 open findings,
    grouped by detector — NOT committed, no fixes made).
-5. TODO: merge PR #42 when checks green, then "release the pr"
-   (merge/release per repo convention — android-release.yml + fastlane
-   exist; check tags for release convention).
+5. DONE: lint fix 11c4361 (@SuppressLint on forgetBluetoothDevice —
+   bondedDevices guarded by bluetoothHiddenAction's permission check),
+   PR #42 merged bb7d260, release 0.19.17 (vc42) tagged v0.19.17 at
+   acf82cc — convention: merge commit + chore(release) bump touching
+   build.gradle.kts/CHANGELOG.md/fastlane changelog + gh release
+   --generate-notes. FULL SWEEP COMPLETE.
