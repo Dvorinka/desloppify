@@ -528,8 +528,12 @@ Committed on maint/continuation:
   scan_path="."). dict_keys schema drift now scopes *Schema-constructor
   literals separately from generic payloads and emits proven
   corrections. 1209 plan/state/python tests pass.
-- Remaining #744 pending: py #693 #691 #690 #688 #687 #673 #685,
-  C# #682, TS #697, cxx #732 (closed unmerged).
+- Session XIV progress (2026-11-02): #695 f76fdf84, #694 ae32707f,
+  #693 c8b31634, #691, #690, #688, #687 all ported + pushed.
+- Remaining #744 pending: py #673 #685, C# #682, TS #697,
+  cxx #732 (closed unmerged). Each: fetch upstream diff
+  (gh pr diff N -R peteromallet/desloppify), port to fork structure,
+  port tests, run targeted pytest + ruff, ledger update, commit, push.
 - Desloppify queue: DONE. Next: Dvorinka/cloudreve (#412 #369; PRs
   #414 #413), then Nothing_Modes.
 
