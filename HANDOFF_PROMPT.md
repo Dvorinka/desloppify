@@ -8,24 +8,28 @@ You are continuing a multi-repo maintenance sweep. Everything below is verified 
 - Persistent memory: `git -C ~/agent-memory pull --ff-only`, read MEMORY.md, append durable facts, commit+push. Latest entry describes this sweep.
 - Repo ledger: `PORTS.md` (issue status rows) + `HANDOFF.md` (session notes) — update on every resolved item.
 - Commits: Conventional Commits, trailer `Authored By: TDvorak <info@tdvorak.dev>`. Push after each resolved item.
-- Lint: `ruff check` (binary at `/home/tdvorak/.local/bin/ruff`; `.venv/bin/ruff` does NOT exist).
+- Lint: `ruff check` (binary at `/home/tdvorak/.local/bin/ruff`; `.venv/bin/ruff` does NOT exist). Several files have PRE-EXISTING ruff I001/E402 noise (parser_groups.py, show/cmd.py, orchestrator_codex_pipeline.py) — verify with `git stash` + ruff before attributing to your diff; leave it.
 - Tests: `.venv/bin/python -m pytest desloppify/tests -q`. Known environmental failures (ignore, don't chase): `TestCmdReviewPrepare::test_do_run_batches_dry_run_generates_packet_and_prompts` in both `tests/review/integration/test_review_commands.py` and `tests/review/test_review_commands.py`. Any OTHER failure is yours.
 - Style: smallest correct diff, reuse existing helpers, regression test per fix. Follow existing commit style (`port: upstream PR #N — title` / `fix(scope): desc (#N)`).
+- Several "queued" issues turn out already-fixed by earlier ports (#844, #835/#911 families) — verify code behavior FIRST, then write only the regression test. This session: #944, #832, #815 were already fixed; #943 was 90% fixed (one call site remained).
 
-## Completed so far (all pushed through ~a10f89d3)
+## Completed so far (all pushed through 50337388)
 
-- Session X fixes: #888, #900, #825, #813, #830, #826 — see PORTS.md.
-- Upstream PR sweep: COMPLETE. Ported #912+#939 (09556943), #913 (a10f89d3). Already ported earlier: #890 #897 #899 #901 #904 #910 #911 #914 #920 #924 #925 #926 #938. #902 (Apache relicensing) deliberately skipped — legal change, not mechanical.
+- Upstream PR sweep: COMPLETE (all ported or covered; #902 license skipped deliberately).
+- New issues #944 #943 #942 #941 #940 #908 — all closed.
+- TRACK backlog started: #832, #823, #821, #815 — all closed.
+- Details in PORTS.md rows + HANDOFF.md Session XII entries.
 
 ## Remaining desloppify queue (in order)
 
-1. **#944** — TS scans miss JS/.mjs tests incl root-level test dirs. `TypeScriptConfig.test_file_extensions` only `[".ts",".tsx"]`; `_find_external_test_files` skips test dirs at scan root. Extend coverage discovery to `.js/.jsx/.mjs/.cjs` tests for root AND subdir scans without widening production source scope. Symmetric fix exists in PR #783 for reference.
-2. **#943** — generic autofix reports success without running formatter. `app/commands/autofix/cmd.py` calls `fixer.fix(entries, dry_run=dry_run)` without `path`; `make_generic_fixer` returns preview entries for `dry_run or not path`, counted as fixes. Must fail closed + pass scan root through a consistent fixer protocol; `apply_retro.py` has same omission. Also: dry-run prints findings as "files", infers fixed entries from count diff, drops scan excludes.
-3. **#942** — Swift `Tests/<Target>Tests/` classified production (zone matcher case-sensitive, rules only `/tests/`). Add Swift-specific `Tests` rule rather than global case-folding.
-4. **#941** — jscpd duplication detection dies on `EBADDEVENGINES` in pnpm-only devEngines workspaces. Run jscpd isolated from target workspace evaluation or honor configured package manager.
-5. **#940** — two bugs: Lua `unused_import` flags string literals (load modes, `string.pack` formats, table keys) AND `detector::*::rule` suppress patterns can't match IDs with `::line` suffix (needs `::*` tail — fix matching or docs/UX).
-6. **#908** — blind review prompts recommend `show` commands that expose prior subjective scores (TRACK in PORTS.md).
-7. Backlog TRACK rows: `#832 #823 #821 #815 #809 #805 #785 #779 #759 #754`; meta rows `#686 #658/#650 #744`. Read PORTS.md notes per row before starting.
+1. **#809** — review imports scan-verify + stale fresh assessments (TRACK).
+2. **#805** — targeted re-review requires unselected dims (TRACK).
+3. **#785** — scan persists to wrong language state on exclusion change (TRACK).
+4. **#779** — selected-dimension import requires unselected (TRACK, dup of #779/#779 row).
+5. **#759** — scan output/history disagree after FP adjudication (TRACK).
+6. **#754** — triage ORGANIZE contradicts requirements (TRACK).
+7. Meta rows: **#686** (preserve queue and triage scopes), **#658/#650** (triage execution handoff), **#744** (meta-PR — mine for port candidates).
+   Read PORTS.md notes per row before starting; re-fetch bodies via `gh issue view N -R peteromallet/desloppify`.
 
 ## Then: Dvorinka/cloudreve
 
@@ -40,7 +44,19 @@ You are continuing a multi-repo maintenance sweep. Everything below is verified 
 4. Write ALL findings into a file in the Nothing_Modes workspace — do NOT fix any of them.
 5. "Release the pr" — cut/merge the release per repo convention; link the PR URL.
 
+## Mechanisms learned this session (reuse, don't rebuild)
+
+- `runtime.plan_file` (RuntimeContext) + `plan_path_for_state(state_path)`: cli.py sets it from `--state`; `load_plan()`/`get_plan_file()` resolve through it. This is what isolates per-language execution queues (#832, #815).
+- `read_coverage_file` (test_coverage/io.py) reads CWD-relative — tests must `monkeypatch.chdir(root)` or use absolute paths.
+- `conftest.py` fixture `set_project_root` → RuntimeContext project_root for detector tests.
+- `show --blind` flag exists now for score-free reviewer navigation.
+- `make_generic_fixer` fixers declare `takes_scan_path`; every `fixer.fix()` call site must pass `path` under that flag (cmd.py + apply_retro cascade both do).
+- `matched_ignore_pattern` retries `::` globs with implicit `::*` tail — `detector::*::rule` matches IDs with `::line` suffix.
+- jscpd adapter: `_run_jscpd_command` takes `cwd=`; detect passes neutral output tmpdir.
+- Failed-detector pattern: phase records reduced `DetectorCoverageStatus` via `_record_detector_coverage`, then `workflow._restore_failed_detector_potentials` preserves prior potential at merge.
+
 ## Notes
 
 - `pull_request_linking`: after creating/taking over any PR, call `link_pull_request` with the full URL.
-- Upstream issue bodies already summarized in HANDOFF.md; re-fetch via `gh issue view N -R peteromallet/desloppify` if needed.
+- `desloppify/data/global/SKILL.md` must equal `docs/SKILL.md` (bundled-sync test) — keep them in sync if either is edited.
+- Upstream issue bodies are summarized in PORTS.md/HANDOFF.md; re-fetch via gh only if needed.
