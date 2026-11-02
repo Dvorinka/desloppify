@@ -288,6 +288,21 @@ Committed on maint/continuation:
 7. Backlog TRACK: #832 #823 #821 #815 #809 #805 #785 #779 #759 #754;
    meta rows #686 #658/#650 #744.
 
+## Session 2026-11-02 (XII) — #944 closed
+- #944 verified already-fixed in fork: the #844 port (ecaebee7) carried both
+  halves — `TypeScriptConfig.test_file_extensions` widened to
+  .ts/.tsx/.js/.jsx/.mjs/.cjs and `_find_external_test_files` no longer skips
+  in-scan test dirs (it searches only extensions absent from the production
+  inventory, so no double-count and no production-scope widening;
+  TS_EXTENSIONS still .ts/.tsx). Upstream's issue predates that merge.
+- Added the issue's requested production-phase regression test:
+  tests/lang/typescript/test_ts_external_js_test_discovery.py — real
+  phase_test_coverage + real TypeScriptConfig + FileZoneMap on a tmp project,
+  parametrized .js/.jsx/.mjs/.cjs × root/subdir scans; asserts the JS-tested
+  module is covered and an unrelated module stays flagged. Mutation-checked:
+  reverting the extension list reproduces the bug (value.ts flagged).
+- Next: #943 #942 #941 #940 #908, then TRACK backlog.
+
 ## Then: Dvorinka/cloudreve
 - Issues: #412 (4.19.1 Docker image vulns — Go toolchain/modules/Alpine),
   #369 (upstream watch). PRs: #414 Android 2FA login+dark-mode form,

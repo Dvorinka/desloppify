@@ -16,6 +16,11 @@ against fork HEAD `3a7735d` (v1.0). Verdicts:
 
 | Issue | Verdict | Note |
 |---|---|---|
+| #944 TS scans miss JS/.mjs tests incl root test dirs | DONE | already fixed by #844 port (widened test_file_extensions + in-scan ext filter); added production-phase regression tests |
+| #943 generic autofix reports success without formatter | PORT | queued — fail closed + pass scan root through fixer protocol |
+| #942 Swift Tests/ dirs classified production | PORT | queued — Swift-specific Tests zone rule |
+| #941 jscpd dies on EBADDEVENGINES in pnpm workspaces | PORT | queued — isolate jscpd from workspace eval |
+| #940 Lua unused_import flags string literals + suppress ::* | PORT | queued — two bugs |
 | #936 coverage scan log labels denominator wrong | SKIP | log cosmetics |
 | #934 review defaults to missing src when scan_path null | DONE | get_default_scan_path falls back to root (fix g) |
 | #933 TS coverage/dep resolvers miss workspace exports | DONE | resolvers follow workspace exports (2b7120d1) |
