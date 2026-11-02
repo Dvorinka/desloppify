@@ -190,6 +190,7 @@ def _build_queue_items(
             count=None,
             status="open",
             include_subjective=True,
+            subjective_threshold=context.target_strict,
             context=context,
             include_skipped=include_skipped,
         ),

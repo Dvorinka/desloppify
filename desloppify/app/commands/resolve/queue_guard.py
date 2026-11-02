@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 
+from desloppify.base.config import load_config
 from desloppify.base.output.terminal import colorize
 from desloppify.engine._work_queue.context import (
     queue_context,
@@ -136,12 +137,13 @@ def _check_queue_order_guard(
     if not queue_order:
         return False
 
-    ctx = queue_context(state, plan=plan)
+    ctx = queue_context(state, config=load_config(), plan=plan)
     result = build_work_queue(
         state,
         options=QueueBuildOptions(
             count=None,
             include_subjective=True,
+            subjective_threshold=ctx.target_strict,
             context=ctx,
         ),
     )
