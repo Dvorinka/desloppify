@@ -168,3 +168,42 @@ def test_reopened_review_in_completed_cluster_still_requires_enrichment():
     old["status"] = "open"
     plan["epic_triage_meta"]["active_triage_issue_ids"] = [old["id"]]
     assert [name for name, _ in unenriched_clusters(plan, state)] == ["past"]
+
+
+def test_organize_gate_uses_live_scope_not_history():
+    """#825: op minimum and report references come from the live slice."""
+    from desloppify.app.commands.plan.triage.validation.organize_policy import (
+        _manual_clusters_or_error,
+    )
+
+    plan, state, old = fixture()
+    live = make_issue(
+        "review",
+        "src/live.py",
+        "defect",
+        tier=4,
+        confidence="high",
+        summary="Live defect",
+        detail={},
+    )
+    state["work_items"][live["id"]] = live
+    plan["epic_triage_meta"]["active_triage_issue_ids"] = [live["id"]]
+    plan["clusters"]["live"] = {
+        "name": "live",
+        "auto": False,
+        "issue_ids": [live["id"]],
+        "description": "Current slice",
+        "action_steps": [{"title": "Fix live"}],
+    }
+    # Historical cluster owns only resolved work outside the frozen scope;
+    # it must not count toward the organize minimum or satisfy references.
+    plan["clusters"]["rust-history"] = {
+        "name": "rust-history",
+        "auto": False,
+        "issue_ids": ["review::src/old.rs::defect"],
+        "execution_status": "done",
+        "description": "Old rust work",
+        "action_steps": [{"title": "done"}],
+    }
+    names = _manual_clusters_or_error(plan, open_review_ids={live["id"]}, state=state)
+    assert names == ["live"]

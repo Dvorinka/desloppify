@@ -21,12 +21,12 @@ from .codex_runner import (
     _output_file_has_text,
 )
 from .orchestrator_codex_parallel import run_parallel_batches
-from .stage_runner_override import active_stage_runner
 from .stage_prompts import (
     build_sense_check_content_prompt,
     build_sense_check_structure_prompt,
 )
 from .stage_prompts_sense import build_sense_check_value_prompt
+from .stage_runner_override import active_stage_runner
 
 
 def _noop_log(_msg: str) -> None:
@@ -358,7 +358,9 @@ def run_sense_check(
         reloaded_plan = _reload_structure_plan(reload_plan=reload_plan, log=_log)
         if reloaded_plan is None:
             return TriageStageRunResult(exit_code=1, reason="plan_reload_failed")
-        structure_plan = reloaded_plan
+        # The reload bypasses triage_scoped_plan — re-scope or the structure
+        # prompt rewires completed historical clusters (#825).
+        structure_plan = triage_scoped_plan(reloaded_plan, state)
         structure_config = _structure_batch_config(
             plan=structure_plan,
             repo_root=repo_root,

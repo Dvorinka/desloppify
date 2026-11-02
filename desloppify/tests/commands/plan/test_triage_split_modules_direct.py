@@ -282,7 +282,7 @@ def test_validate_organize_submission_passes_state_to_enrichment_gate(monkeypatc
     monkeypatch.setattr(
         organize_stage_mod,
         "_manual_clusters_or_error",
-        lambda _plan, open_review_ids=None: ["manual"],
+        lambda _plan, open_review_ids=None, **_kwargs: ["manual"],
     )
 
     def _capture_enriched(plan, actual_state):

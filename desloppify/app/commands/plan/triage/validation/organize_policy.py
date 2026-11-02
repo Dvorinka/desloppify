@@ -8,8 +8,12 @@ from typing import Literal
 from desloppify.base.output.terminal import colorize
 from desloppify.engine._plan.cluster_semantics import cluster_is_active
 
-from ..review_coverage import cluster_issue_ids, manual_clusters_with_issues
-from ..stages.helpers import unclustered_review_issues, unenriched_clusters
+from ..review_coverage import cluster_issue_ids
+from ..stages.helpers import (
+    scoped_manual_clusters_with_issues,
+    unclustered_review_issues,
+    unenriched_clusters,
+)
 from .reflect_accounting import BacklogDecision, ReflectDisposition
 
 
@@ -63,8 +67,12 @@ def _manual_clusters_or_error(
     plan: dict,
     *,
     open_review_ids: set[str] | None = None,
+    state: dict | None = None,
 ) -> list[str] | None:
-    manual_clusters = manual_clusters_with_issues(plan)
+    # Organize validates the live triage slice — completed historical
+    # clusters must not inflate the op minimum or satisfy report
+    # references (#825).
+    manual_clusters = scoped_manual_clusters_with_issues(plan, state)
     if manual_clusters:
         return manual_clusters
     if open_review_ids is not None and not open_review_ids:
