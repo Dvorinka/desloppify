@@ -45,6 +45,101 @@ _NEXTJS_ROOT_CONVENTIONS: set[str] = {
 _NEXTJS_EXTENSIONS: set[str] = {".ts", ".tsx", ".js", ".jsx"}
 
 
+# ---------------------------------------------------------------------------
+# React Router / Remix convention files
+# ---------------------------------------------------------------------------
+
+# Everything under app/routes/ is a route module, loaded by the framework's
+# file-based router and imported by nothing.
+_REACT_ROUTER_ROUTE_DIRS: tuple[str, ...] = ("routes",)
+
+# Framework entry points that sit beside the routes directory.
+_REACT_ROUTER_CONVENTIONS: set[str] = {
+    "root",
+    "entry.client",
+    "entry.server",
+}
+
+_REACT_ROUTER_CONFIGS: tuple[str, ...] = (
+    "react-router.config.js",
+    "react-router.config.mjs",
+    "react-router.config.ts",
+    "remix.config.js",
+    "remix.config.mjs",
+    "remix.config.ts",
+)
+
+
+def _detect_react_router_project(path: Path) -> bool:
+    """Return True if this directory declares a React Router or Remix project.
+
+    A config file is the cheap signal. Failing that, the dependency is checked,
+    because the framework's own template ships a Vite config rather than a
+    react-router.config file.
+    """
+    for name in _REACT_ROUTER_CONFIGS:
+        if (path / name).is_file():
+            return True
+
+    package_json = path / "package.json"
+    if package_json.is_file():
+        try:
+            text = package_json.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            return False
+        return '"@react-router/' in text or '"@remix-run/' in text
+    return False
+
+
+def _react_router_project_root(
+    directory: Path, cache: dict[Path, Path | None]
+) -> Path | None:
+    """Find the nearest React Router project root, package-bounded."""
+    visited = []
+    current = directory
+    while current not in cache:
+        visited.append(current)
+        if _detect_react_router_project(current):
+            root = current
+            break
+        if (current / "package.json").is_file() or current.parent == current:
+            root = None
+            break
+        current = current.parent
+    else:
+        root = cache[current]
+    for parent in visited:
+        cache[parent] = root
+    return root
+
+
+def _is_react_router_convention_entry(rel_path: str) -> bool:
+    """Return True if *rel_path* is a React Router / Remix convention file.
+
+    Route modules and the framework entry points have no importers by design —
+    the router loads them from the filesystem — so reporting them as orphaned
+    is a false positive on every project of this shape.
+    """
+    p = Path(rel_path)
+    if p.suffix not in _NEXTJS_EXTENSIONS:
+        return False
+
+    parts = p.parts
+
+    # Any file beneath an app/routes/ (or src/routes/) directory.
+    for routes_dir in _REACT_ROUTER_ROUTE_DIRS:
+        if routes_dir in parts[:-1]:
+            return True
+
+    # root.jsx, entry.client.jsx, entry.server.jsx beside the routes directory.
+    # `.stem` only strips the last suffix, so entry.client.jsx stems to
+    # "entry.client", which is exactly what is being matched.
+    if p.stem in _REACT_ROUTER_CONVENTIONS and len(parts) <= 3:
+        return True
+
+    return False
+
+
 def _detect_nextjs_project(path: Path) -> bool:
     """Return True if this directory declares a Next.js project."""
     for name in ("next.config.js", "next.config.mjs", "next.config.ts"):
@@ -273,6 +368,7 @@ def detect_orphaned_files(
 
     # Resolve framework ownership per file for monorepos and subtree scans.
     nextjs_roots: dict[Path, Path | None] = {}
+    react_router_roots: dict[Path, Path | None] = {}
     django_roots: dict[Path, Path | None] = {}
     alembic_roots: dict[Path, Path | None] = {}
 
@@ -305,6 +401,14 @@ def detect_orphaned_files(
             project_root = _nextjs_project_root(source.parent, nextjs_roots)
             if project_root and _is_nextjs_convention_entry(str(source.relative_to(project_root))):
                 continue
+            if source.suffix in _NEXTJS_EXTENSIONS:
+                react_router_root = _react_router_project_root(
+                    source.parent, react_router_roots
+                )
+                if react_router_root and _is_react_router_convention_entry(
+                    str(source.relative_to(react_router_root))
+                ):
+                    continue
             if source.suffix == ".py":
                 django_root = _django_project_root(source.parent, django_roots)
                 if django_root and _is_django_convention_entry(
