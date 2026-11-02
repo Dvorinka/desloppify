@@ -520,19 +520,30 @@ Committed on maint/continuation:
 - Desloppify queue: DONE. Next: Dvorinka/cloudreve (#412 #369; PRs
   #414 #413), then Nothing_Modes.
 
-## Then: Dvorinka/cloudreve
-- Issues: #412 (4.19.1 Docker image vulns — Go toolchain/modules/Alpine),
-  #369 (upstream watch). PRs: #414 Android 2FA login+dark-mode form,
-  #413 no auth token on presigned object-storage URLs. Review + merge.
+## Then: Dvorinka/cloudreve — DONE (2026-11-02)
+- #412 closed: vulns superseded — backend 4.23.7, Go 1.26.5
+  (go-version-file), alpine:latest runtime base.
+- #369 left open (living upstream-watch tracker) with triage comment.
+- PR #413 merged 04f4ed65 (same-host check before attaching bearer
+  token — fixes S3 presigned 400s + token leakage).
+- PR #414 merged d74bf048 (2FA login flow: code 203 -> session id ->
+  TOTP step -> completeLogin; dark-mode paired on* colors).
+- Checkout: /home/tdvorak/Desktop/PROG+HTML/Cloudreve/cloudreve (master).
 
-## Then: Dvorinka/Nothing_Modes (user-prescribed order)
-1. Fix crash reports FIRST: android.database.sqlite.SQLiteFullException
-   code 13 in Room endTransaction (d5.b.e / androidx.room.w.b, worker
-   dispatcher) on app 0.19.11, Infinix X6725. Likely cause: unbounded
-   Room writes (cache/history table) + no disk-space handling — add
-   bounded retention/cleanup + SQLITE_FULL catch so it degrades.
-2. Add fix to open PR #42 (feature/onboarding-guide — onboarding,
-   starter modes, BT control, reviewer fixes), resolve + merge it.
-3. Run desloppify on Nothing_Modes repo ONLY.
-4. Write all findings to a file in the workspace — do NOT fix any.
-5. "Release the pr" (merge/release per repo convention).
+## Then: Dvorinka/Nothing_Modes (user-prescribed order) — in flight
+1. DONE: SQLiteFullException fix committed to PR #42 (b0ad61d).
+   guardedAppend (data/DbWriteGuards.kt) prunes old rows per write,
+   retries once on SQLITE_FULL, degrades to null if still full.
+   Wired into RoomAuditSink, RoomModeActivationSink (withTransaction —
+   the actual endTransaction crash site), RoomStateSnapshotStore
+   (pruneToLatest 10/automation, keeps live revert data),
+   RoomExecutionJournal, AutomationNotificationListener.
+   notification_log gained pruneBefore; StateSnapshotDao gained
+   pruneToLatest. :data + :automation-android compile clean.
+2. PR #42 pushed + linked; build checks pending at handoff.
+3. DONE: desloppify --lang kotlin scan --path Nothing_Modes (strict 19.2).
+4. DONE: .desloppify-findings.md written in repo root (475 open findings,
+   grouped by detector — NOT committed, no fixes made).
+5. TODO: merge PR #42 when checks green, then "release the pr"
+   (merge/release per repo convention — android-release.yml + fastlane
+   exist; check tags for release convention).
