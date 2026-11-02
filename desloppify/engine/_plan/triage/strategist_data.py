@@ -7,8 +7,10 @@ from dataclasses import asdict, dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+from desloppify.base.subjective_dimension_catalog import DISPLAY_NAMES
 from desloppify.engine._plan.schema import PlanModel
 from desloppify.engine._plan.triage.core import detect_recurring_patterns
+from desloppify.engine._scoring.results.impact import get_dimension_for_detector
 from desloppify.engine._state.issue_semantics import is_review_work_item
 from desloppify.engine._state.schema import StateModel
 
@@ -164,46 +166,23 @@ def _trend_from_delta(delta: float, *, stagnant_threshold: float = 0.5) -> str:
     return "stable"
 
 
-def _detector_dimension_map(dimension_scores: dict[str, Any]) -> dict[str, str]:
-    """detector → dimension name, from dimension_scores' detectors wiring (#900)."""
-    mapping: dict[str, str] = {}
-    if not isinstance(dimension_scores, dict):
-        return mapping
-    for name, entry in dimension_scores.items():
-        if not isinstance(entry, dict):
-            continue
-        detectors = entry.get("detectors")
-        keys = detectors.keys() if isinstance(detectors, dict) else (
-            detectors if isinstance(detectors, list) else ()
-        )
-        for detector in keys:
-            mapping.setdefault(str(detector), str(name))
-    return mapping
-
-
-def _dimension_name_for_issue(
-    issue: dict[str, Any],
-    detector_to_dim: dict[str, str] | None = None,
-) -> str:
-    """Extract dimension from an issue.
+def _dimension_name_for_issue(issue: dict[str, Any]) -> str:
+    """Use the same dimension labels as the score trajectories.
 
     Checks both ``detail.dimension`` (review issues) and
     ``detail.dimension_name`` (synthetic/work-queue items) because this
-    function is called on all work_items, not just review issues.
-    Falls back to the detector → dimension map so mechanical findings
-    without an explicit detail.dimension still attribute correctly.
+    function is called on all work_items, not just review issues. Mechanical
+    findings usually carry no dimension detail; use their scoring policy.
     """
     detail = issue.get("detail", {})
     if isinstance(detail, dict):
         for key in ("dimension", "dimension_name"):
             value = detail.get(key)
             if isinstance(value, str) and value.strip():
-                return value.strip()
-    if detector_to_dim:
-        mapped = detector_to_dim.get(str(issue.get("detector", "")))
-        if mapped:
-            return mapped
-    return "unknown"
+                name = value.strip()
+                return DISPLAY_NAMES.get(name, name)
+    dimension = get_dimension_for_detector(str(issue.get("detector", "")))
+    return dimension.name if dimension is not None else "unknown"
 
 
 def _open_review_and_resolved_review_issues(
@@ -320,7 +299,6 @@ def dimension_trajectories(
         ),
         default="",
     )
-    detector_to_dim = _detector_dimension_map(current_dim_scores)
     investment_by_dim: Counter[str] = Counter()
     for issue in work_items.values():
         if not isinstance(issue, dict):
@@ -405,17 +383,14 @@ def file_churn_hotspots(work_items: dict[str, dict[str, Any]]) -> list[FileChurn
     return hotspots
 
 
-def rework_loop_detection(
-    work_items: dict[str, dict[str, Any]],
-    detector_to_dim: dict[str, str] | None = None,
-) -> list[ReworkLoopEntry]:
+def rework_loop_detection(work_items: dict[str, dict[str, Any]]) -> list[ReworkLoopEntry]:
     grouped: dict[str, dict[str, Any]] = defaultdict(
         lambda: {"resolved": 0, "open": 0, "reopen": 0, "files": set()}
     )
     for issue in work_items.values():
         if not isinstance(issue, dict):
             continue
-        dimension = _dimension_name_for_issue(issue, detector_to_dim)
+        dimension = _dimension_name_for_issue(issue)
         if dimension == "unknown":
             continue
         bucket = grouped[dimension]
@@ -671,9 +646,6 @@ def lifecycle_inventory(
         if isinstance(issue_id, str)
         and not issue_id.startswith(("triage::", "workflow::", "subjective::"))
     ]
-    detector_to_dim = _detector_dimension_map(
-        state.get("dimension_scores", {}) if isinstance(state.get("dimension_scores"), dict) else {}
-    )
     backlog_by_dimension: Counter[str] = Counter()
     if isinstance(work_items, dict):
         queued = set(prioritized_ids)
@@ -683,7 +655,7 @@ def lifecycle_inventory(
                 continue
             if issue_id in queued or issue_id in skipped_ids:
                 continue
-            backlog_by_dimension[_dimension_name_for_issue(issue, detector_to_dim)] += 1
+            backlog_by_dimension[_dimension_name_for_issue(issue)] += 1
 
     skipped_by_reason: Counter[str] = Counter()
     if isinstance(skipped, dict):
@@ -746,14 +718,7 @@ def collect_strategist_input(
             window=lookback_scans,
         ),
         file_churn=file_churn_hotspots(work_items if isinstance(work_items, dict) else {}),
-        rework_loops=rework_loop_detection(
-            work_items if isinstance(work_items, dict) else {},
-            _detector_dimension_map(
-                state.get("dimension_scores", {})
-                if isinstance(state.get("dimension_scores"), dict)
-                else {}
-            ),
-        ),
+        rework_loops=rework_loop_detection(work_items if isinstance(work_items, dict) else {}),
         completed_clusters=completed_clusters,
         execution_patterns=execution_pattern_analysis(
             plan.get("execution_log", []) if isinstance(plan.get("execution_log"), list) else []
