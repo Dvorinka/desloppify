@@ -462,6 +462,20 @@ Committed on maint/continuation:
   persisted top-level across all score fields; fails pre-fix (28.0 vs 30.5).
 - Next: #754, meta rows #686 #658/#650 #744.
 
+## Session 2026-11-02 (XIII cont.) — #754 closed
+- Complaint 1 (contradictory requirements) already resolved: unenriched_clusters
+  only needs description + >=1 step (#888 consolidated-step coverage), the
+  rendered requirements text says "consolidate related issues into one step",
+  and the >1.0 step-ratio warning is advisory for >=3-issue clusters only.
+- Complaint 2 (exit 0 on refusal) fixed: _cmd_stage_organize now raises
+  CommandError(exit 1) when the reflect prerequisite fails or submission
+  validation refuses, instead of returning silently — runner subprocesses
+  can detect rejection. No-queue early return stays exit 0 (vacuous).
+- Regression: test_organize_exits_when_reflect_requirement_not_met updated
+  to expect CommandError; new test_organize_raises_when_submission_validation_fails
+  asserts a short report refuses and records no stage.
+- Next: meta rows #686 #658/#650 #744.
+
 ## Then: Dvorinka/cloudreve
 - Issues: #412 (4.19.1 Docker image vulns — Go toolchain/modules/Alpine),
   #369 (upstream watch). PRs: #414 Android 2FA login+dark-mode form,

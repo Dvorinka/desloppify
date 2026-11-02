@@ -105,7 +105,7 @@ against fork HEAD `3a7735d` (v1.0). Verdicts:
 | #758 in-file selftests reported untested | DONE | has_inline_tests: selftest fn + __main__/argv wiring |
 | #756 Rust orphan flags custom cargo bin target | DONE | _cargo_target_paths entry roots |
 | #755 Codex ENRICH nested subagents | SKIP | runner prompt |
-| #754 triage ORGANIZE contradicts requirements | TRACK | |
+| #754 triage ORGANIZE contradicts requirements | DONE | contradiction already gone (#888 consolidated steps accepted; requirements text updated); organize refusals now raise CommandError exit 1 |
 | #748 relative exclusions → Bandit keeps out-of-scope | DONE | same fix family as #916 |
 | #746 Python src-layout imports orphaned at root scan | DONE | src/ resolution root |
 | #728 bandit not registered under [full] extras | DONE | module-importable bandit check (ported #762) |

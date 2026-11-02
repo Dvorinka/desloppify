@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 
+from desloppify.base.exception_sets import CommandError
 from desloppify.base.output.terminal import colorize
 
 from ..completion_flow import count_log_activity_since
@@ -231,7 +232,7 @@ def _cmd_stage_organize(
         is_reuse = True
 
     if not _require_reflect_stage_for_organize(stages):
-        return
+        raise CommandError("Cannot organize: stage not recorded.", exit_code=1)
 
     runtime = resolved_services.command_runtime(args)
     state = runtime.state
@@ -248,7 +249,7 @@ def _cmd_stage_organize(
         services=resolved_services,
     )
     if validated is None:
-        return
+        raise CommandError("Cannot organize: stage not recorded.", exit_code=1)
     manual_clusters, normalized_report = validated
     cleared, stages = _persist_organize_stage(
         plan=plan,
