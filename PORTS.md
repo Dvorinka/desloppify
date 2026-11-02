@@ -96,12 +96,12 @@ against fork HEAD `3a7735d` (v1.0). Verdicts:
 | #785 scan persists to wrong language state on exclusion change | DONE | main() applies persisted exclusions before _resolve_default_path + _load_shared_runtime, so state_path and scan resolve_lang share the post-exclusion detection |
 | #784 reflect permits defer but validation rejects it | DONE | 8e893135 — upstream PR #637 port |
 | #780 next --state loads wrong plan | DONE | sibling plan via plan_path_for_state; backlog same (909d1d3a) |
-| #779/#779 selected-dimension import requires unselected | TRACK | |
+| #779/#779 selected-dimension import requires unselected | DONE | same defect as #805 — packet-scoped coverage gate (#935+#840 ports); missing computed vs packet's declared dims only |
 | #772 Python dup detector parses string fixtures | DONE | AST-gated extraction |
 | #771 selftest suites treated as untested | DONE | *_selftest zone + naming convention |
 | #770/#769 Python orphan misses nested pkg/__main__ CLIs | DONE | source_dir roots + __main__ guard hook |
 | #761 TS body extraction stops in typed params | DONE | signature-brace tracking (ported #721, d5b770e5) |
-| #759 scan output/history disagree after FP adjudication | TRACK | |
+| #759 scan output/history disagree after FP adjudication | DONE | scan_history entry rewritten with post-reconciliation scores inside the lock — history/output/persisted state all share final values |
 | #758 in-file selftests reported untested | DONE | has_inline_tests: selftest fn + __main__/argv wiring |
 | #756 Rust orphan flags custom cargo bin target | DONE | _cargo_target_paths entry roots |
 | #755 Codex ENRICH nested subagents | SKIP | runner prompt |

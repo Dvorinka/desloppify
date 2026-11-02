@@ -220,6 +220,28 @@ def test_raw_reopen_is_still_present_before_canonical_reconciliation(
     )
 
 
+def test_scan_history_scores_match_persisted_state(run_app_merge, tmp_path):
+    """History must record post-adjudication scores, not raw-merge ones (#759).
+
+    The canonical FP restore runs after merge_scan appended scan_history,
+    so persisted top-level scores used to diverge from the recorded entry.
+    """
+    state, plan, current, run = run_app_merge
+    run([current])
+    persisted = json.loads((tmp_path / "state.json").read_text())
+    entry = persisted["scan_history"][-1]
+    for key in (
+        "strict_score",
+        "verified_strict_score",
+        "objective_score",
+        "overall_score",
+    ):
+        assert entry[key] == persisted[key]
+    assert entry["open"] == persisted["stats"]["open"]
+    assert state["strict_score"] == persisted["strict_score"]
+    assert state["objective_score"] == persisted["objective_score"]
+
+
 def test_plan_read_failure_defaults_to_original_freshness_semantics(
     run_app_merge, monkeypatch
 ):

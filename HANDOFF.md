@@ -441,6 +441,27 @@ Committed on maint/continuation:
   in shared_phases_helpers.py:185). Add to known-env-failure list.
 - Next: #779 #759 #754, meta rows #686 #658/#650 #744.
 
+## Session 2026-11-02 (XIII cont.) — #779 closed
+- Same defect as #805: 13-dim selected run-batches import blocked for the
+  7 unselected dims. Already fixed — packet_dimensions is normalized from
+  the immutable packet's declared dims and the gate only blocks on
+  selected-dim misses (#935+#840 ports).
+- Next: #759 #754, meta rows #686 #658/#650 #744.
+
+## Session 2026-11-02 (XIII cont.) — #759 closed
+- Root cause: merge_scan appends scan_history with pre-adjudication scores;
+  the canonical FP restore + lock-exit save recompute later mutate the
+  persisted top-level, so history/output (28.0) disagreed with state (30.5).
+- Fix: _sync_scan_history_scores in scan/workflow.py recomputes stats after
+  all in-lock mutations (potentials restore, mark_stale_holistic,
+  reconcile_plan_after_scan) and rewrites the appended entry's score/open/
+  dimension fields; runtime.state sync then picks up the final values, so
+  printed output, history, and disk all agree.
+- Regression: test_scan_history_scores_match_persisted_state in
+  test_app_canonical_skip_freshness.py — asserts history[-1] equals
+  persisted top-level across all score fields; fails pre-fix (28.0 vs 30.5).
+- Next: #754, meta rows #686 #658/#650 #744.
+
 ## Then: Dvorinka/cloudreve
 - Issues: #412 (4.19.1 Docker image vulns — Go toolchain/modules/Alpine),
   #369 (upstream watch). PRs: #414 Android 2FA login+dark-mode form,

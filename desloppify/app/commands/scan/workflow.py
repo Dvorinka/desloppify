@@ -54,6 +54,7 @@ from desloppify.base.subjective_dimensions import (
 )
 from desloppify.engine._plan.persistence import load_plan
 from desloppify.engine._plan.scan_issue_reconcile import reconcile_plan_after_scan
+from desloppify.engine._state import _recompute_stats
 from desloppify.engine._state.filtering import path_scoped_issues
 from desloppify.engine._state.merge import MergeScanOptions, merge_scan
 from desloppify.engine._state.noise import (
@@ -476,6 +477,44 @@ def _restore_failed_detector_potentials(
             merged[detector] = prev_lang_potentials[detector]
 
 
+def _sync_scan_history_scores(
+    state: dict,
+    *,
+    subjective_integrity_target: float | None,
+) -> None:
+    """Rewrite the just-appended history entry with final adjudicated scores.
+
+    ``merge_scan`` records ``scan_history`` before failed-detector potential
+    restores, holistic staleness marking, and canonical plan reconciliation
+    mutate dispositions — so the entry's scores could diverge from the
+    persisted top-level values and from every view that reads them (#759).
+    """
+    history = state.get("scan_history")
+    if not isinstance(history, list) or not history:
+        return
+    entry = history[-1]
+    if not isinstance(entry, dict):
+        return
+    _recompute_stats(
+        state,
+        scan_path=state.get("scan_path"),
+        subjective_integrity_target=subjective_integrity_target,
+    )
+    entry["strict_score"] = state.get("strict_score")
+    entry["verified_strict_score"] = state.get("verified_strict_score")
+    entry["objective_score"] = state.get("objective_score")
+    entry["overall_score"] = state.get("overall_score")
+    stats = state.get("stats")
+    if isinstance(stats, dict) and "open" in stats:
+        entry["open"] = stats["open"]
+    dimension_scores = state.get("dimension_scores")
+    if dimension_scores:
+        entry["dimension_scores"] = {
+            name: {"score": ds["score"], "strict": ds.get("strict", ds["score"])}
+            for name, ds in dimension_scores.items()
+        }
+
+
 # State keys mutated during scan prep (before the merge) that must be carried
 # into the freshly loaded state when merging under the lock.
 _SCAN_PREP_STATE_KEYS = (
@@ -585,6 +624,10 @@ def merge_scan_results(
             locked_plan = None
         if isinstance(locked_plan, dict):
             reconcile_plan_after_scan(locked_plan, state)
+        _sync_scan_history_scores(
+            state,
+            subjective_integrity_target=target_score,
+        )
         # Downstream consumers (plan reconcile, reporting, badge) read the
         # merged state via runtime.state — mutate it in place so existing
         # references (fixtures, callers holding the pre-merge dict) observe
