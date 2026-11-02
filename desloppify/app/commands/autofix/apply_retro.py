@@ -91,7 +91,8 @@ def _cascade_unused_import_cleanup(
         print(colorize("  Cascade: no orphaned imports found", "dim"))
         return
 
-    raw_results = fixer.fix(entries, dry_run=dry_run)
+    fix_kwargs = {"path": path} if getattr(fixer, "takes_scan_path", False) else {}
+    raw_results = fixer.fix(entries, dry_run=dry_run, **fix_kwargs)
     results = raw_results.entries if isinstance(raw_results, FixResult) else raw_results
 
     if not results:

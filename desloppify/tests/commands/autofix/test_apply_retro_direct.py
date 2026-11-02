@@ -120,6 +120,59 @@ def test_cascade_unused_import_cleanup_resolves_cascade_issues(monkeypatch, caps
     assert "auto-resolved 1 import issues" in out
 
 
+def test_cascade_passes_scan_path_to_generic_fixer(tmp_path) -> None:
+    """Cascade must hand the scan path to tool-backed fixers (#943).
+
+    Without path, make_generic_fixer raises (fail-closed) — the omitted-path
+    invocation turned the cascade into a crash for generic fixers.
+    """
+    from desloppify.languages._framework.generic_parts.tool_factories import (
+        make_generic_fixer,
+    )
+
+    calls: list[dict] = []
+    outputs = iter(
+        [
+            # detect: one finding
+            subprocess.CompletedProcess(
+                args="lint", returncode=1, stdout="src/a.x:1: bad\n", stderr=""
+            ),
+            # fix_cmd: runs the formatter
+            subprocess.CompletedProcess(args="fix", returncode=0, stdout="", stderr=""),
+            # recheck: clean
+            subprocess.CompletedProcess(
+                args="lint", returncode=0, stdout="", stderr=""
+            ),
+        ]
+    )
+
+    def fake_run(*_a, **kwargs):
+        calls.append(kwargs)
+        return next(outputs)
+
+    tool = {
+        "label": "lint",
+        "cmd": "lint",
+        "fmt": "gnu",
+        "id": "cascade-lint",
+        "tier": 2,
+        "fix_cmd": "lint --fix",
+    }
+    fixer = make_generic_fixer(tool, run_subprocess=fake_run)
+    lang = SimpleNamespace(fixers={"unused-imports": fixer})
+
+    retro_mod._cascade_unused_import_cleanup(
+        tmp_path,
+        state={"issues": {}},
+        _prev_score=0.0,
+        dry_run=False,
+        lang=lang,
+    )
+
+    assert len(calls) == 3
+    assert all(call.get("cwd") == str(tmp_path) for call in calls)
+
+
 # -- Tests for generic fixer result shape (no "removed" key) --
 # Bug found by @AugusteBalas in PR #484: generic fixers return {file, line}
 # or {file, fixed} without a "removed" key, causing KeyError in the pipeline.

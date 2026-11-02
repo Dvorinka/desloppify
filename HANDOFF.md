@@ -303,6 +303,23 @@ Committed on maint/continuation:
   reverting the extension list reproduces the bug (value.ts flagged).
 - Next: #943 #942 #941 #940 #908, then TRACK backlog.
 
+## Session 2026-11-02 (XII cont.) — #943 closed
+- Core already fixed by the #911 port: cmd.py passes path via
+  takes_scan_path, make_generic_fixer fails closed without it, dry-run
+  counts unique files, recheck-fail claims nothing. Verified.
+- Remaining gap fixed: apply_retro._cascade_unused_import_cleanup invoked
+  fix() without path — same omitted-path call the issue flags; for generic
+  fixers it now raised instead of silently passing. Now mirrors the
+  takes_scan_path protocol.
+- Regression test: test_cascade_passes_scan_path_to_generic_fixer drives a
+  real make_generic_fixer through the cascade with an injected runner and
+  asserts all three tool invocations run with cwd=scan path.
+- Deferred (upstream-accepted trade-offs, noted): fixed entries inferred
+  from per-file count diff rather than diagnostic matching; fix_cmd runs
+  at scan root without forwarding excludes — no ToolSpec field exists for
+  per-tool exclude flags.
+- Next: #942 #941 #940 #908, then TRACK backlog.
+
 ## Then: Dvorinka/cloudreve
 - Issues: #412 (4.19.1 Docker image vulns — Go toolchain/modules/Alpine),
   #369 (upstream watch). PRs: #414 Android 2FA login+dark-mode form,
