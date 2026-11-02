@@ -10,8 +10,8 @@ import pytest
 from desloppify.engine._plan.operations.cluster import add_to_cluster, create_cluster
 from desloppify.engine._plan.step_completion import auto_complete_steps
 from desloppify.engine._work_queue.snapshot import (
-    _Partitions,
     _build_backlog,
+    _Partitions,
     build_queue_snapshot,
 )
 
@@ -278,8 +278,8 @@ def test_load_plan_for_runtime_default_without_state_path(monkeypatch) -> None:
 
 
 def test_scannable_file_count_skips_excluded_dirs(tmp_path) -> None:
-    from desloppify.languages._framework.registry import resolution
     from desloppify.base.discovery import source as source_mod
+    from desloppify.languages._framework.registry import resolution
 
     (tmp_path / "src").mkdir()
     (tmp_path / "src" / "a.cs").write_text("class A {}")
@@ -304,8 +304,8 @@ def test_scannable_file_count_skips_excluded_dirs(tmp_path) -> None:
 
 
 def test_scannable_file_count_skips_glob_exclusions(tmp_path) -> None:
-    from desloppify.languages._framework.registry import resolution
     from desloppify.base.discovery import source as source_mod
+    from desloppify.languages._framework.registry import resolution
 
     (tmp_path / "gen").mkdir()
     (tmp_path / "gen" / "a.gen.cs").write_text("class G {}")
@@ -322,3 +322,162 @@ def test_scannable_file_count_skips_glob_exclusions(tmp_path) -> None:
         assert resolution._scannable_file_count(_Cfg(), tmp_path) == 1
     finally:
         ctx.exclusions = old
+
+
+# ── #888 part 2: queued mechanical work must not be masked by the ────────────
+#    stale-assessment postflight (subjective/objective queue deadlock)
+
+
+def test_queued_mechanical_work_precedes_stale_assessment_postflight() -> None:
+    """#888: `next` shows the planned cluster, not the gated stale review."""
+    state = {
+        "work_items": {
+            "smells::src/a.py::1": {
+                "id": "smells::src/a.py::1",
+                "detector": "smells",
+                "file": "src/a.py",
+                "tier": 2,
+                "confidence": "high",
+                "summary": "mech 1",
+                "status": "open",
+                "detail": {},
+            },
+            "smells::src/b.py::2": {
+                "id": "smells::src/b.py::2",
+                "detector": "smells",
+                "file": "src/b.py",
+                "tier": 2,
+                "confidence": "high",
+                "summary": "mech 2",
+                "status": "open",
+                "detail": {},
+            },
+            "smells::src/c.py::3": {
+                "id": "smells::src/c.py::3",
+                "detector": "smells",
+                "file": "src/c.py",
+                "tier": 2,
+                "confidence": "high",
+                "summary": "mech 3",
+                "status": "open",
+                "detail": {},
+            },
+        },
+        "scan_count": 5,
+        "scan_path": ".",
+        "dimension_scores": {
+            "Error consistency": {
+                "score": 65.0,
+                "strict": 65.0,
+                "failing": 1,
+                "detectors": {
+                    "subjective_assessment": {"dimension_key": "error_consistency"},
+                },
+            },
+        },
+        "subjective_assessments": {
+            "error_consistency": {
+                "score": 65.0,
+                "source": "holistic",
+                "assessed_at": "2026-01-01T11:00:00+00:00",
+                "needs_review_refresh": True,
+                "stale_since": "2026-01-01T00:00:00+00:00",
+            },
+        },
+        "last_scan": "2026-01-01T10:00:00+00:00",
+    }
+    plan = {
+        "version": 1,
+        "queue_order": [
+            "smells::src/a.py::1",
+            "smells::src/b.py::2",
+            "smells::src/c.py::3",
+        ],
+        "clusters": {
+            "test-coverage": {
+                "name": "test-coverage",
+                "auto": False,
+                "issue_ids": [
+                    "smells::src/a.py::1",
+                    "smells::src/b.py::2",
+                    "smells::src/c.py::3",
+                ],
+                "description": "Test coverage findings",
+                "user_modified": True,
+            },
+        },
+        "refresh_state": {},
+        "epic_triage_meta": {
+            "triaged_ids": [
+                "smells::src/a.py::1",
+                "smells::src/b.py::2",
+                "smells::src/c.py::3",
+            ],
+        },
+    }
+
+    snapshot = build_queue_snapshot(state, plan=plan)
+    exec_ids = [item.get("id") for item in snapshot.execution_items]
+    # The planned mechanical work is the actionable front; the stale
+    # assessment marker stays visible behind it instead of masking the
+    # queue (the review rerun gate blocks on that open objective backlog,
+    # so review-first ordering deadlocked next ↔ review preflight).
+    assert snapshot.phase == "assessment"
+    assert exec_ids[:3] == [
+        "smells::src/a.py::1",
+        "smells::src/b.py::2",
+        "smells::src/c.py::3",
+    ]
+    assert "subjective::error_consistency" in exec_ids
+
+    # Plan-order collapse (what `next` and the resolve queue guard render):
+    # the manual cluster fronts the queue ahead of the stale review.
+    from desloppify.engine._work_queue.plan_order import collapse_clusters
+
+    collapsed_ids = [item.get("id") for item in collapse_clusters(list(snapshot.execution_items), plan)]
+    assert collapsed_ids[:2] == ["test-coverage", "subjective::error_consistency"]
+
+
+def test_assessment_postflight_without_queued_execution_keeps_partition() -> None:
+    """No planned execution → the assessment phase queue stays exclusive."""
+    state = {
+        "work_items": {
+            "smells::src/a.py::1": {
+                "id": "smells::src/a.py::1",
+                "detector": "smells",
+                "file": "src/a.py",
+                "tier": 2,
+                "confidence": "high",
+                "summary": "mech 1",
+                "status": "open",
+                "detail": {},
+            },
+        },
+        "scan_count": 5,
+        "scan_path": ".",
+        "subjective_assessments": {
+            "error_consistency": {
+                "score": 65.0,
+                "source": "holistic",
+                "assessed_at": "2026-01-01T11:00:00+00:00",
+                "needs_review_refresh": True,
+                "stale_since": "2026-01-01T00:00:00+00:00",
+            },
+        },
+        "dimension_scores": {
+            "Error consistency": {
+                "score": 65.0,
+                "strict": 65.0,
+                "failing": 1,
+                "detectors": {
+                    "subjective_assessment": {"dimension_key": "error_consistency"},
+                },
+            },
+        },
+        "last_scan": "2026-01-01T10:00:00+00:00",
+    }
+    plan = {"version": 1, "queue_order": [], "clusters": {}, "refresh_state": {}}
+
+    snapshot = build_queue_snapshot(state, plan=plan)
+    exec_ids = [item.get("id") for item in snapshot.execution_items]
+    assert exec_ids == ["subjective::error_consistency"]

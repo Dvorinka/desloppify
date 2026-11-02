@@ -344,6 +344,44 @@ def _derive_display_phase(
 # ---------------------------------------------------------------------------
 
 
+def _postflight_scan_recorded(plan: dict | None) -> bool:
+    """Whether a scan postflight marker is recorded in the plan lifecycle."""
+    if not isinstance(plan, dict):
+        return False
+    refresh_state = plan.get("refresh_state")
+    if not isinstance(refresh_state, dict):
+        return False
+    return bool(refresh_state.get("postflight_scan_completed_at_scan_count"))
+
+
+def _clustered_execution_items(
+    plan: dict | None,
+    items: list[WorkQueueItem],
+) -> list[WorkQueueItem]:
+    """Execution items fronted by a multi-member manual cluster.
+
+    ``next`` collapses cluster members into a single cluster front, so a
+    multi-member manual cluster is the unit the user staged to burn
+    through. Lone queued findings stay parked behind the stale-assessment
+    marker: they remain resolvable by id via the queue guard's
+    front-planned branch and do not block the review rerun gate (#888).
+    """
+    if not isinstance(plan, dict) or not items:
+        return []
+    clustered_ids: set[str] = set()
+    for cluster in plan.get("clusters", {}).values():
+        if not isinstance(cluster, dict) or cluster.get("auto"):
+            continue
+        ids = [
+            issue_id
+            for issue_id in cluster.get("issue_ids", [])
+            if isinstance(issue_id, str) and issue_id
+        ]
+        if len(ids) >= 2:
+            clustered_ids.update(ids)
+    return [item for item in items if item.get("id", "") in clustered_ids]
+
+
 def _execution_items_for_phase(
     phase: str,
     *,
@@ -354,6 +392,8 @@ def _execution_items_for_phase(
     postflight_review_items: list[WorkQueueItem],
     postflight_workflow_items: list[WorkQueueItem],
     triage_items: list[WorkQueueItem],
+    clustered_execution_items: list[WorkQueueItem] | None = None,
+    postflight_scan_recorded: bool = False,
 ) -> list[WorkQueueItem]:
     if phase == LIFECYCLE_PHASE_REVIEW_INITIAL:
         return initial_review_items
@@ -369,6 +409,16 @@ def _execution_items_for_phase(
             return deferred_items
         return [item for item in scan_items if item.get("id") == WORKFLOW_RUN_SCAN_ID]
     if phase == LIFECYCLE_PHASE_ASSESSMENT_POSTFLIGHT:
+        # Clustered mechanical work remains the actionable front when no
+        # scan postflight is in progress: `next` renders the collapsed
+        # cluster first, so the resolve guard and review rerun gate must
+        # see the same front or each side waits on the other (#888
+        # subjective/objective queue deadlock). The stale-assessment
+        # marker stays visible right behind it. During an active
+        # postflight (postflight_scan_completed marker recorded), new
+        # execute work stays backlog-only until postflight ends.
+        if clustered_execution_items and not postflight_scan_recorded:
+            return [*clustered_execution_items, *postflight_assessment_items]
         return postflight_assessment_items
     if phase == LIFECYCLE_PHASE_REVIEW_POSTFLIGHT:
         return postflight_review_items
@@ -609,6 +659,10 @@ def build_queue_snapshot(
         postflight_review_items=p.postflight_review_items,
         postflight_workflow_items=p.postflight_workflow_items,
         triage_items=p.triage_items,
+        clustered_execution_items=_clustered_execution_items(
+            effective_plan, p.anchored_execution_items
+        ),
+        postflight_scan_recorded=_postflight_scan_recorded(effective_plan),
     )
 
     execution_ids = {item.get("id", "") for item in execution_items}
