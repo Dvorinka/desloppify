@@ -255,3 +255,52 @@ Committed on maint/continuation:
   PR #42, add to PR, merge/release it; then run desloppify on
   Nothing_Modes only, write findings file to workspace (NO fixes), and
   release the PR.
+
+## Session 2026-11-02 (XI cont.) — upstream PR sweep COMPLETE
+- All upstream PRs accounted for: ported this session #912+#939
+  (09556943), #913 (a10f89d3 manual merge). Already ported earlier:
+  #890 bb106605, #897 covered by #904's a097d5e8, #899 89702e62,
+  #901 61bd10f3, #904 a097d5e8, #910 9a27b838, #911 9ab412e3,
+  #914 a7fd9417, #920 98bd2658, #924 36dfaf86, #925 324811f2,
+  #926 1fe39165, #938 243638ba. #902 (Apache relicensing) skipped —
+  non-mechanical legal change.
+- New issues #909-#936 already adjudicated in PORTS.md.
+
+## Remaining desloppify queue (in order)
+1. #944 TS scans miss JS/.mjs tests incl root-level test dirs —
+   TypeScriptConfig.test_file_extensions only .ts/.tsx; extend coverage
+   discovery to .js/.jsx/.mjs/.cjs tests at root AND subdir scans without
+   widening production source scope. See PR #783 for symmetric fix.
+2. #943 generic autofix no-op: autofix cmd.py calls fixer.fix(entries,
+   dry_run) WITHOUT path= -> generic fixer returns previews counted as
+   successes; must fail closed + pass scan root through fixer protocol.
+   Also apply_retro.py same omission. Also: dry-run prints findings as
+   "files"; infers fixed entries from count diff; drops scan excludes.
+3. #942 Swift Tests dirs classified production — SwiftPM Tests/<T>Tests/
+   vs case-sensitive /tests/ zone rule. Prefer Swift-specific Tests rule.
+4. #941 TS duplication jscpd fails in pnpm-only devEngines workspaces —
+   npx evaluates devEngines; run jscpd isolated from target workspace or
+   honor configured package manager.
+5. #940 Lua unused_import flags string literals (load modes, pack
+   formats, table keys) + suppress pattern detector::*::rule can't match
+   IDs with ::line suffix (needs trailing ::*).
+6. #908 blind review prompts leak prior subjective scores (TRACK).
+7. Backlog TRACK: #832 #823 #821 #815 #809 #805 #785 #779 #759 #754;
+   meta rows #686 #658/#650 #744.
+
+## Then: Dvorinka/cloudreve
+- Issues: #412 (4.19.1 Docker image vulns — Go toolchain/modules/Alpine),
+  #369 (upstream watch). PRs: #414 Android 2FA login+dark-mode form,
+  #413 no auth token on presigned object-storage URLs. Review + merge.
+
+## Then: Dvorinka/Nothing_Modes (user-prescribed order)
+1. Fix crash reports FIRST: android.database.sqlite.SQLiteFullException
+   code 13 in Room endTransaction (d5.b.e / androidx.room.w.b, worker
+   dispatcher) on app 0.19.11, Infinix X6725. Likely cause: unbounded
+   Room writes (cache/history table) + no disk-space handling — add
+   bounded retention/cleanup + SQLITE_FULL catch so it degrades.
+2. Add fix to open PR #42 (feature/onboarding-guide — onboarding,
+   starter modes, BT control, reviewer fixes), resolve + merge it.
+3. Run desloppify on Nothing_Modes repo ONLY.
+4. Write all findings to a file in the workspace — do NOT fix any.
+5. "Release the pr" (merge/release per repo convention).
