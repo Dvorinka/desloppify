@@ -492,6 +492,16 @@ Committed on maint/continuation:
   I001/F401 noise (import layout + unused pytest import) — leave it.
 - Next: meta rows #658/#650 #744.
 
+## Session 2026-11-02 (XIII cont.) — #658/#650 closed
+- Both are triage→execution-handoff meta issues. Every named verification
+  suite exists and passes in the fork (334 tests: reconcile_pipeline,
+  phase_cleanup, triage_completion_cleanup, work_queue_plan_order,
+  lifecycle_transitions, postflight_lifecycle, queue_order_guard,
+  living_plan, scan_preflight). The handoff, stale-residue cleanup, and
+  manual-cluster priority ordering are covered by the #888/#900-family
+  queue work — no code change needed.
+- Next: meta row #744, then cloudreve.
+
 ## Then: Dvorinka/cloudreve
 - Issues: #412 (4.19.1 Docker image vulns — Go toolchain/modules/Alpine),
   #369 (upstream watch). PRs: #414 Android 2FA login+dark-mode form,
