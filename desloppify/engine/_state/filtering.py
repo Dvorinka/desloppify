@@ -186,6 +186,10 @@ def matched_ignore_pattern(
             target = issue_id if "::" in pattern else file
             if fnmatch.fnmatch(target, pattern):
                 return pattern
+            # Issue IDs may carry a trailing ::detail/::line component, so a
+            # glob that names the rule component needs an implicit tail (#940).
+            if "::" in pattern and fnmatch.fnmatch(target, pattern + "::*"):
+                return pattern
             continue
 
         if "::" in pattern:

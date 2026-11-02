@@ -20,7 +20,7 @@ against fork HEAD `3a7735d` (v1.0). Verdicts:
 | #943 generic autofix reports success without formatter | DONE | core fixed by #911 port (takes_scan_path + fail-closed + per-file counts); cascade call site in apply_retro now passes path too. Deferred upstream-accepted semantics: count-diff inference, no exclude forwarding to formatter |
 | #942 Swift Tests/ dirs classified production | DONE | Swift-specific /Tests/ ZoneRule (segment-bounded, no global case-folding) |
 | #941 jscpd dies on EBADDEVENGINES in pnpm workspaces | DONE | jscpd runs with cwd=neutral output tmpdir; scan path passed absolute; report-name resolution tolerant to scan-relative paths |
-| #940 Lua unused_import flags string literals + suppress ::* | PORT | queued — two bugs |
+| #940 Lua unused_import flags string literals + suppress ::* | DONE | LUA_SPEC import_query constrained to require(); matcher retries :: globs with ::* tail |
 | #936 coverage scan log labels denominator wrong | SKIP | log cosmetics |
 | #934 review defaults to missing src when scan_path null | DONE | get_default_scan_path falls back to root (fix g) |
 | #933 TS coverage/dep resolvers miss workspace exports | DONE | resolvers follow workspace exports (2b7120d1) |

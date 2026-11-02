@@ -341,6 +341,18 @@ Committed on maint/continuation:
 - Chose isolation over honoring devEngines (no pnpm/dlx detection needed).
 - Next: #940 #908, then TRACK backlog.
 
+## Session 2026-11-02 (XII cont.) — #940 closed
+- Lua FP: LUA_SPEC.import_query matched ANY function_call with a string
+  arg (load modes, string.pack formats, assert messages, table keys).
+  Constrained with (#eq? @_fn "require") — bare `require "mod"` shares
+  the same node shape, so one pattern covers both forms.
+- Suppress glob: matched_ignore_pattern now retries ::-patterns with an
+  implicit "::*" tail, so the documented `detector::*::rule` form matches
+  IDs carrying a ::line suffix. File globs and prefix forms unchanged.
+- Regression: tests/lang/common/test_lua_unused_imports.py (4 cases),
+  tests/state/test_matched_ignore_pattern.py (7 cases).
+- Next: #908, then TRACK backlog.
+
 ## Then: Dvorinka/cloudreve
 - Issues: #412 (4.19.1 Docker image vulns — Go toolchain/modules/Alpine),
   #369 (upstream watch). PRs: #414 Android 2FA login+dark-mode form,

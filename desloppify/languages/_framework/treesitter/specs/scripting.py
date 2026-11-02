@@ -71,6 +71,7 @@ LUA_SPEC = TreeSitterLangSpec(
     import_query="""
         (function_call
             name: (identifier) @_fn
+            (#eq? @_fn "require")
             arguments: (arguments
                 (string) @path)) @import
     """,
