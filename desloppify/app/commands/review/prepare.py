@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import json
+
 from desloppify.app.commands.helpers.query import write_query
+from desloppify.base.discovery.file_paths import safe_write_text
 from desloppify.base.exception_sets import CommandError
 from desloppify.base.output.terminal import colorize
 
@@ -11,7 +14,9 @@ from .packet.build import (
     build_run_batches_next_command,
     resolve_review_packet_context,
 )
+from .runner_packets import build_blind_packet
 from .runtime.setup import setup_lang_concrete
+from .runtime_paths import blind_packet_path
 
 
 def do_prepare(
@@ -51,6 +56,12 @@ def do_prepare(
         raise CommandError(msg, exit_code=1) from exc
 
     write_query(data)
+    # The blind packet is derived data — refresh it so structure profiles
+    # cannot go stale while scan refuses mid-cycle (#826).
+    safe_write_text(
+        blind_packet_path(),
+        json.dumps(build_blind_packet(data), indent=2) + "\n",
+    )
     _print_prepare_summary(
         data,
         next_command=next_command,
