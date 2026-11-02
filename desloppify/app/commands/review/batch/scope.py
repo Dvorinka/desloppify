@@ -235,6 +235,8 @@ def enforce_trusted_import_coverage_gate(
     colorize_fn,
 ) -> None:
     """Block trusted assessment import when selected assessment dimensions are missing."""
+    # The coverage notice reports every scored dimension absent from this run.
+    # A deliberately scoped run only promises the dimensions in its packet.
     missing_selected_dims = [dim for dim in selected_dims if dim in set(missing_dims)]
     if not missing_selected_dims:
         return
