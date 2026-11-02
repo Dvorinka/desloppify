@@ -320,6 +320,15 @@ Committed on maint/continuation:
   per-tool exclude flags.
 - Next: #942 #941 #940 #908, then TRACK backlog.
 
+## Session 2026-11-02 (XII cont.) — #942 closed
+- Swift zone rules: `ZoneRule(Zone.TEST, ["/Tests/"])` prepended to
+  generic_zone_rules in languages/swift/__init__.py — segment-bounded
+  (matches Tests/ dirs incl. nested packages, not Contests/ or Tests.swift).
+  Chose the Swift-specific rule per the issue's hint over global case-folding.
+- Regression: tests/lang/swift/test_swift_zones.py — 8 cases incl.
+  Packages/Foo/Tests/ nesting and production controls.
+- Next: #941 #940 #908, then TRACK backlog.
+
 ## Then: Dvorinka/cloudreve
 - Issues: #412 (4.19.1 Docker image vulns — Go toolchain/modules/Alpine),
   #369 (upstream watch). PRs: #414 Android 2FA login+dark-mode form,
