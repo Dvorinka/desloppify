@@ -329,6 +329,18 @@ Committed on maint/continuation:
   Packages/Foo/Tests/ nesting and production controls.
 - Next: #941 #940 #908, then TRACK backlog.
 
+## Session 2026-11-02 (XII cont.) — #941 closed
+- jscpd isolation: _run_jscpd_command gained cwd kwarg; detect_with_jscpd
+  now runs npx/jscpd from the neutral output tempdir, so npm never
+  evaluates the target workspace's devEngines (EBADDEVENGINES fix).
+  Scan arg resolved absolute so the detached cwd can't break it.
+- _to_scan_relative now also tries scan_root/name for relative report
+  names — tolerant if jscpd emits scan-relative paths.
+- Regression: test_runs_jscpd_from_isolated_cwd (cwd!=workspace, absolute
+  scan arg), test_parses_scan_relative_report_names.
+- Chose isolation over honoring devEngines (no pnpm/dlx detection needed).
+- Next: #940 #908, then TRACK backlog.
+
 ## Then: Dvorinka/cloudreve
 - Issues: #412 (4.19.1 Docker image vulns — Go toolchain/modules/Alpine),
   #369 (upstream watch). PRs: #414 Android 2FA login+dark-mode form,

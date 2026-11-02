@@ -19,7 +19,7 @@ against fork HEAD `3a7735d` (v1.0). Verdicts:
 | #944 TS scans miss JS/.mjs tests incl root test dirs | DONE | already fixed by #844 port (widened test_file_extensions + in-scan ext filter); added production-phase regression tests |
 | #943 generic autofix reports success without formatter | DONE | core fixed by #911 port (takes_scan_path + fail-closed + per-file counts); cascade call site in apply_retro now passes path too. Deferred upstream-accepted semantics: count-diff inference, no exclude forwarding to formatter |
 | #942 Swift Tests/ dirs classified production | DONE | Swift-specific /Tests/ ZoneRule (segment-bounded, no global case-folding) |
-| #941 jscpd dies on EBADDEVENGINES in pnpm workspaces | PORT | queued — isolate jscpd from workspace eval |
+| #941 jscpd dies on EBADDEVENGINES in pnpm workspaces | DONE | jscpd runs with cwd=neutral output tmpdir; scan path passed absolute; report-name resolution tolerant to scan-relative paths |
 | #940 Lua unused_import flags string literals + suppress ::* | PORT | queued — two bugs |
 | #936 coverage scan log labels denominator wrong | SKIP | log cosmetics |
 | #934 review defaults to missing src when scan_path null | DONE | get_default_scan_path falls back to root (fix g) |

@@ -20,11 +20,8 @@ import tempfile
 from pathlib import Path
 
 from desloppify.base.discovery.source import (
-
     collect_exclude_dirs,
-
     get_exclusions,
-
 )
 from desloppify.base.output.fallbacks import warn_best_effort
 
@@ -48,11 +45,16 @@ def _to_scan_relative(path_resolved: Path, name: str) -> str | None:
     """Return scan-relative path, or None when file is outside scan path."""
     if not name:
         return None
-    try:
-        rel = Path(name).resolve().relative_to(path_resolved)
-    except (ValueError, OSError):
-        return None
-    return str(rel).replace("\\", "/")
+    candidates = [Path(name)]
+    if not candidates[0].is_absolute():
+        candidates.append(path_resolved / name)
+    for candidate in candidates:
+        try:
+            rel = candidate.resolve().relative_to(path_resolved)
+        except (ValueError, OSError):
+            continue
+        return str(rel).replace("\\", "/")
+    return None
 
 
 def _is_artifact_path(rel_path: str) -> bool:
@@ -198,13 +200,16 @@ def _terminate_process_tree(proc: subprocess.Popen[str]) -> None:
         return
 
 
-def _run_jscpd_command(cmd: list[str], *, timeout: int) -> subprocess.CompletedProcess[str]:
+def _run_jscpd_command(
+    cmd: list[str], *, timeout: int, cwd: Path | None = None
+) -> subprocess.CompletedProcess[str]:
     proc = subprocess.Popen(  # nosec B603
         cmd,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
         start_new_session=True,
+        cwd=str(cwd) if cwd is not None else None,
     )
     try:
         stdout, stderr = proc.communicate(timeout=timeout)
@@ -239,7 +244,7 @@ def detect_with_jscpd(path: Path) -> list[dict] | None:
             _run_jscpd_command(
                 [
                     *cmd_prefix,
-                    str(path),
+                    str(path.resolve()),
                     "--reporters",
                     "json",
                     "--output",
@@ -253,6 +258,10 @@ def detect_with_jscpd(path: Path) -> list[dict] | None:
                     "--silent",
                 ],
                 timeout=120,
+                # Run from the neutral output dir: npx evaluates package.json
+                # devEngines in the workspace cwd and dies with EBADDEVENGINES
+                # in pnpm-only projects (#941).
+                cwd=Path(tmpdir),
             )
         except FileNotFoundError:
             warn_best_effort(

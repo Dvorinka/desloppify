@@ -662,6 +662,55 @@ class TestJscpdAdapter:
         result = _parse_jscpd_report(report, tmp_path)
         assert result == []
 
+    def test_runs_jscpd_from_isolated_cwd(self, tmp_path):
+        """npx must not evaluate the workspace package.json (#941).
+
+        Scan path is passed absolute; the subprocess cwd is the neutral
+        output tempdir so devEngines in the target project is never read.
+        """
+        captured: dict = {}
+
+        def fake_run(cmd, *, timeout, cwd=None):
+            captured["cmd"] = cmd
+            captured["cwd"] = cwd
+            raise subprocess.CalledProcessError(1, cmd)
+
+        with patch(
+            "desloppify.engine.detectors.jscpd_adapter._resolve_jscpd_command",
+            return_value=["/usr/bin/npx", "--yes", "jscpd"],
+        ), patch(
+            "desloppify.engine.detectors.jscpd_adapter._run_jscpd_command",
+            side_effect=fake_run,
+        ):
+            assert detect_with_jscpd(tmp_path) is None
+
+        assert captured["cwd"] is not None
+        assert Path(captured["cwd"]) != tmp_path
+        # The scan target is passed as an absolute path so the neutral cwd
+        # cannot break resolution.
+        scan_arg = captured["cmd"][captured["cmd"].index("jscpd") + 1]
+        assert scan_arg == str(tmp_path.resolve())
+
+    def test_parses_scan_relative_report_names(self, tmp_path):
+        """jscpd may emit paths relative to the scan root, not absolute."""
+        (tmp_path / "src").mkdir()
+        report = {
+            "duplicates": [
+                {
+                    "fragment": "x = 1\ny = 2\nz = 3\nw = 4",
+                    "lines": 4,
+                    "firstFile": {"name": "src/a.ts", "start": 1},
+                    "secondFile": {"name": "src/b.ts", "start": 5},
+                }
+            ]
+        }
+        result = _parse_jscpd_report(report, tmp_path)
+        assert len(result) == 1
+        assert {loc["file"] for loc in result[0]["locations"]} == {
+            "src/a.ts",
+            "src/b.ts",
+        }
+
     def test_sample_extracted_from_fragment(self, tmp_path):
         f1 = str(tmp_path / "a.py")
         f2 = str(tmp_path / "b.py")
