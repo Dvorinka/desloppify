@@ -447,6 +447,35 @@ def run_scan_generation(
         disable_file_cache()
 
 
+def _restore_failed_detector_potentials(
+    state: dict,
+    lang_name: str | None,
+    *,
+    coverage: dict | None,
+    potentials: dict,
+    prev_lang_potentials: dict,
+) -> None:
+    """Preserve prior scoring potential for detectors that failed this scan.
+
+    A failed detector drops out of the new potentials dict; on replace-mode
+    merges its previous entry disappears too, so retained open findings stop
+    contributing to the score — an apparent improvement caused by missing
+    measurement (#821). Restore the previous value when the detector is
+    recorded as reduced and produced no potential this run.
+    """
+    if not lang_name or not isinstance(coverage, dict):
+        return
+    merged = state.setdefault("potentials", {}).setdefault(lang_name, {})
+    for detector, record in coverage.items():
+        if (
+            isinstance(record, dict)
+            and record.get("status") == "reduced"
+            and detector not in potentials
+            and detector in prev_lang_potentials
+        ):
+            merged[detector] = prev_lang_potentials[detector]
+
+
 # State keys mutated during scan prep (before the merge) that must be carried
 # into the freshly loaded state when merging under the lock.
 _SCAN_PREP_STATE_KEYS = (
@@ -509,6 +538,11 @@ def merge_scan_results(
             state["zone_distribution"] = runtime.lang.zone_map.counts()
         _persist_scan_coverage(state, runtime.lang)
 
+        lang_name = runtime.lang.name if runtime.lang else None
+        prev_lang_potentials = dict(
+            (state.get("potentials") or {}).get(lang_name) or {}
+        )
+
         diff = merge_scan(
             state,
             issues,
@@ -528,6 +562,13 @@ def merge_scan_results(
             ),
         )
 
+        _restore_failed_detector_potentials(
+            state,
+            lang_name,
+            coverage=getattr(runtime.lang, "detector_coverage", None),
+            potentials=potentials,
+            prev_lang_potentials=prev_lang_potentials,
+        )
         mark_stale_holistic(
             state, runtime.config.get("holistic_max_age_days", 30)
         )

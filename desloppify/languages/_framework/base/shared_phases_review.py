@@ -461,6 +461,21 @@ def phase_boilerplate_duplication(
                 entries=entries,
             )
     if entries is None:
+        # jscpd failed — mark coverage reduced so the score is flagged
+        # incomplete rather than silently dropping the detector (#821).
+        _record_detector_coverage(
+            lang,
+            DetectorCoverageStatus(
+                detector="boilerplate_duplication",
+                status="reduced",
+                confidence=0.0,
+                summary="Boilerplate duplication detection skipped (jscpd unavailable or failed).",
+                impact="Duplication scoring reflects retained findings and prior potential, not a fresh measurement.",
+                remediation="Fix the jscpd/npx invocation and rescan.",
+                tool="jscpd",
+                reason="tool_error",
+            ),
+        )
         return [], {}
     entries = _filter_boilerplate_entries_by_zone(entries, lang.zone_map)
     minimum_lines = max(1, int(getattr(lang, "boilerplate_min_lines", 4)))

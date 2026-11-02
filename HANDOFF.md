@@ -380,6 +380,15 @@ Committed on maint/continuation:
   unchanged-behavior control.
 - Next: #821 #815 #809 #805 #785 #779 #759 #754, meta rows.
 
+## Session 2026-11-02 (XII cont.) — #821 closed
+- phase_boilerplate_duplication now records reduced DetectorCoverageStatus
+  on jscpd failure — score flagged incomplete instead of full coverage.
+- workflow._restore_failed_detector_potentials preserves the previous
+  potential entry for reduced detectors that produced none this run, so
+  retained findings still contribute (no spurious improvement).
+- Regression: tests/commands/scan/test_failed_detector_potentials.py (4).
+- Next: #815 #809 #805 #785 #779 #759 #754, meta rows.
+
 ## Then: Dvorinka/cloudreve
 - Issues: #412 (4.19.1 Docker image vulns — Go toolchain/modules/Alpine),
   #369 (upstream watch). PRs: #414 Android 2FA login+dark-mode form,
