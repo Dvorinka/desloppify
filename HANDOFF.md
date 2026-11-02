@@ -217,3 +217,11 @@ Committed on maint/continuation:
   masking no longer empties `next` while plan queue lists refresh ids.
   String-detail legacy items guarded. 3cff7831.
 - Next: #830 #826 #823 #821 #815 #809 #805 #785 #779 #759 #754 #908 #832.
+
+## Session 2026-11-02 (X continued) — #830 closed
+- #830: resolution scope for partial imports is now bounded by the
+  packet's declared dimensions — ReviewImportConfig.allowed_dimensions
+  threaded through do_import; import_holistic_issues intersects the
+  collected scope with it. Stray payload dims can no longer resolve
+  holistic findings the batch never covered. 4dc9839b.
+- Next: #826 #823 #821 #815 #809 #805 #785 #779 #759 #754 #908 #832.
