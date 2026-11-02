@@ -371,6 +371,15 @@ Committed on maint/continuation:
   pinned with test_load_plan_honors_runtime_plan_file_override.
 - Next: #823 #821 #815 #809 #805 #785 #779 #759 #754, meta rows.
 
+## Session 2026-11-02 (XII cont.) — #823 closed
+- _write_desloppify_cli_helper now takes the run args and bakes explicit
+  --lang (global flag, before "$@") and --state (subcommand flag, after
+  "$@") into run_desloppify.sh. Helper-issued show/plan/next commands in
+  mixed-language workspaces now hit the same state file as the triage run.
+- Regression: test_cli_helper_bakes_in_explicit_lang_and_state +
+  unchanged-behavior control.
+- Next: #821 #815 #809 #805 #785 #779 #759 #754, meta rows.
+
 ## Then: Dvorinka/cloudreve
 - Issues: #412 (4.19.1 Docker image vulns — Go toolchain/modules/Alpine),
   #369 (upstream watch). PRs: #414 Android 2FA login+dark-mode form,

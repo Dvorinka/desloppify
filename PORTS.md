@@ -79,7 +79,7 @@ against fork HEAD `3a7735d` (v1.0). Verdicts:
 | #826 blind packet structure profiles go stale | DONE | 4c57f81f — review --prepare rewrites blind packet from fresh context |
 | #825 triage includes inactive historical clusters | DONE | 8e9234e2 — structure prompt re-scoped after reload; organise op-min/reference list uses live slice |
 | #824 Rust multiline attributes hide annotations | DONE | metadata walk crosses `)]` tails |
-| #823 triage runner loses language/state in mixed projects | TRACK | |
+| #823 triage runner loses language/state in mixed projects | DONE | run_desloppify.sh bakes --lang (global, pre-command) + --state (subcommand flag) into the wrapper |
 | #821 boilerplate detector drops scoring potential | TRACK | |
 | #815 mixed-language review imports remove queue items | TRACK | |
 | #814 Python coverage misses runpy.run_path tests | DONE | .py literal specs from runpy.run_path args |

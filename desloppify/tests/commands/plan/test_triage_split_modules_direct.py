@@ -1319,6 +1319,27 @@ def test_orchestrator_pipeline_writes_exact_cli_helper(tmp_path: Path) -> None:
     assert "-m desloppify.cli" in text
 
 
+def test_cli_helper_bakes_in_explicit_lang_and_state(tmp_path: Path) -> None:
+    """Triage run with --lang/--state must propagate them to helper commands (#823)."""
+    args = SimpleNamespace(lang="rust", state=".desloppify/state-rust.json")
+    helper = orchestrator_pipeline_mod._write_desloppify_cli_helper(tmp_path, args)
+    text = helper.read_text(encoding="utf-8")
+    assert "--lang rust" in text
+    assert '--state .desloppify/state-rust.json' in text
+    # --lang is a global flag (before the subcommand), --state a subcommand flag.
+    assert text.index("--lang rust") < text.index('"$@"')
+    assert text.index("--state") > text.index('"$@"')
+
+
+def test_cli_helper_without_lang_state_unchanged(tmp_path: Path) -> None:
+    helper = orchestrator_pipeline_mod._write_desloppify_cli_helper(
+        tmp_path, SimpleNamespace(lang=None, state=None)
+    )
+    text = helper.read_text(encoding="utf-8")
+    assert "--lang" not in text
+    assert "--state" not in text
+
+
 def test_load_prior_reports_from_plan_uses_existing_stage_reports() -> None:
     plan = {
         "epic_triage_meta": {

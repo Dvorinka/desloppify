@@ -105,14 +105,24 @@ def _read_stage_output(output_file: Path) -> str:
 
 
 
-def _write_desloppify_cli_helper(run_dir: Path) -> Path:
-    """Create an exact CLI wrapper so codex subagents use this checkout + interpreter."""
+def _write_desloppify_cli_helper(run_dir: Path, args=None) -> Path:
+    """Create an exact CLI wrapper so codex subagents use this checkout + interpreter.
+
+    When the triage run was invoked with explicit --lang/--state, bake them
+    into the wrapper so stage-issued commands target the same language and
+    state file (#823) — otherwise helper commands silently read the default
+    project state in mixed-language workspaces.
+    """
     package_root = Path(desloppify.__file__).resolve().parent.parent
     script_path = run_dir / "run_desloppify.sh"
+    lang = getattr(args, "lang", None) if args is not None else None
+    state = getattr(args, "state", None) if args is not None else None
+    prefix_args = f" --lang {shlex.quote(str(lang))}" if lang else ""
+    suffix_args = f" --state {shlex.quote(str(state))}" if state else ""
     script = (
         "#!/bin/sh\n"
         f"export PYTHONPATH={shlex.quote(str(package_root))}${{PYTHONPATH:+:$PYTHONPATH}}\n"
-        f"exec {shlex.quote(sys.executable)} -m desloppify.cli \"$@\"\n"
+        f"exec {shlex.quote(sys.executable)} -m desloppify.cli{prefix_args} \"$@\"{suffix_args}\n"
     )
     safe_write_text(script_path, script)
     os.chmod(script_path, 0o700)
@@ -383,7 +393,7 @@ def run_codex_pipeline(
 
     run_log_path = run_dir / "run.log"
     append_run_log = make_run_log_writer(run_log_path)
-    cli_helper = _write_desloppify_cli_helper(run_dir)
+    cli_helper = _write_desloppify_cli_helper(run_dir, args)
     runner_label = active_runner_name()
     append_run_log(
         f"run-start runner={runner_label} stages={','.join(stages_to_run)} "
