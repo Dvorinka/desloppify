@@ -71,7 +71,7 @@ against fork HEAD `3a7735d` (v1.0). Verdicts:
 | #830 partial trusted review import resolves outside dimension | DONE | 4dc9839b — payload dims bounded to packet's declared scope (allowed_dimensions) |
 | #829 schema-drift clustering quadratic | SKIP | perf |
 | #827 CLI commit records omit cluster attribution | DONE | bf276c8c |
-| #826 blind packet structure profiles go stale | TRACK | |
+| #826 blind packet structure profiles go stale | DONE | 4c57f81f — review --prepare rewrites blind packet from fresh context |
 | #825 triage includes inactive historical clusters | DONE | 8e9234e2 — structure prompt re-scoped after reload; organise op-min/reference list uses live slice |
 | #824 Rust multiline attributes hide annotations | DONE | metadata walk crosses `)]` tails |
 | #823 triage runner loses language/state in mixed projects | TRACK | |

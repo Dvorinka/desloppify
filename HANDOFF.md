@@ -225,3 +225,12 @@ Committed on maint/continuation:
   collected scope with it. Stray payload dims can no longer resolve
   holistic findings the batch never covered. 4dc9839b.
 - Next: #826 #823 #821 #815 #809 #805 #785 #779 #759 #754 #908 #832.
+
+## Session 2026-11-02 (X continued) — #830 + #826 closed
+- #830: ReviewImportConfig.allowed_dimensions bounds partial-import
+  resolution to the packet's declared dims — stray payload dims can no
+  longer resolve holistic findings the batch never covered. 4dc9839b.
+- #826: review --prepare now rewrites .desloppify/review_packet_blind.json
+  from the freshly built payload — structure profiles are derived data
+  and can no longer go stale while scan refuses mid-cycle. 4c57f81f.
+- Next: #823 #821 #815 #809 #805 #785 #779 #759 #754 #908 #832.
