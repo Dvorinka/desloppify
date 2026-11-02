@@ -476,6 +476,22 @@ Committed on maint/continuation:
   asserts a short report refuses and records no stage.
 - Next: meta rows #686 #658/#650 #744.
 
+## Session 2026-11-02 (XIII cont.) — #686 closed
+- Problem 1 (synthetic-only queue hides backlog): already fixed —
+  live_planned_queue_empty excludes is_marker_id entries
+  (triage::/workflow::/subjective::); strategy:: stays substantive per #900
+  intent (queued strategy work executes through next).
+- Problems 2/3 (explicit empty frozen scope -> historical clusters):
+  already fixed — scoped_manual_clusters_with_issues keeps explicit empty
+  scope and filters to non-done clusters (#841 port family).
+- Problem 4 (strategize dropped --attestation): FIXED —
+  cmd_stage_strategize now forwards args.attestation to
+  ensure_triage_started's attested_override param.
+- Regression: test_strategize_forwards_attestation_to_triage_start captures
+  the forwarded kwarg. Note: test_strategist.py has pre-existing ruff
+  I001/F401 noise (import layout + unused pytest import) — leave it.
+- Next: meta rows #658/#650 #744.
+
 ## Then: Dvorinka/cloudreve
 - Issues: #412 (4.19.1 Docker image vulns — Go toolchain/modules/Alpine),
   #369 (upstream watch). PRs: #414 Android 2FA login+dark-mode form,

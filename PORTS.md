@@ -199,7 +199,7 @@ against fork HEAD `3a7735d` (v1.0). Verdicts:
 | #710 java PMD -f text | DONE | |
 | #703 Go import identifiers from package not path | DONE | ported (fix a) |
 | #699 bash sourced library usage in unused-import | DONE | |
-| #686 preserve queue and triage scopes | TRACK | |
+| #686 preserve queue and triage scopes | DONE | marker ids excluded from live_planned_queue_empty; explicit empty scope handled in scoped_manual_clusters_with_issues (#841 port); strategize now forwards --attestation to ensure_triage_started |
 | #658/#650 triage execution handoff | TRACK | |
 | #633 Go package-level test coverage credit | DONE | |
 | #620 bandit config-level excludes | DONE | overlaps #762 |

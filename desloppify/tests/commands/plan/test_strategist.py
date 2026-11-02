@@ -240,3 +240,28 @@ class TestCreateStrategicWorkItemsUpsert:
         assert item["status"] == "open"
         assert item["detector"] == "strategy"
         assert plan["queue_order"][0] == "strategy::synthetic-audit"
+
+
+def test_strategize_forwards_attestation_to_triage_start(monkeypatch) -> None:
+    """--attestation must reach ensure_triage_started as the queue-guard override (#686)."""
+    plan = {"queue_order": [], "epic_triage_meta": {}, "clusters": {}}
+    state = {"work_items": {}}
+    captured: dict = {}
+
+    monkeypatch.setattr(strategize_mod, "has_triage_in_queue", lambda _plan: False)
+
+    def fake_start(plan, *, services, state, start_message, attestation=None, deps=None):
+        captured["attestation"] = attestation
+        return SimpleNamespace(status="blocked")
+
+    monkeypatch.setattr(strategize_mod, "ensure_triage_started", fake_start)
+
+    strategize_mod.cmd_stage_strategize(
+        argparse.Namespace(
+            report=None,
+            attestation="overriding the queue guard for a documented reason",
+        ),
+        services=_services(plan, state),
+    )
+
+    assert captured["attestation"] == "overriding the queue guard for a documented reason"

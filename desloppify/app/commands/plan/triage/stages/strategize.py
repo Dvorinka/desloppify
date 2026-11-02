@@ -241,6 +241,7 @@ def cmd_stage_strategize(
             services=resolved_services,
             state=state,
             start_message="  Planning mode auto-started (7 stages queued).",
+            attestation=getattr(args, "attestation", None),
             deps=TriageLifecycleDeps(
                 has_triage_in_queue=has_triage_in_queue,
                 inject_triage_stages=inject_triage_stages,
