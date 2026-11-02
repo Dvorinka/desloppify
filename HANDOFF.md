@@ -517,6 +517,19 @@ Committed on maint/continuation:
 - Pending port candidates for a future session (each needs diff review +
   tests): python #695 #694 #693 #691 #690 #688 #687 #673 #685, C# #682,
   TS #697, cxx #732 (closed unmerged).
+- #695 ported: bandit now scans discovered files in 250-file batches
+  (detect_with_bandit_files) instead of blind recursion — fatal exits,
+  per-file errors, missing target metrics, empty output all report
+  reduced coverage. 367 adapter/security tests pass.
+- #694 ported: semantic_corrections channel (LangRuntime field +
+  accessor + contract; merge_scan applies apply_semantic_corrections
+  before verify_disappeared and skips corrected ids; reconcile purges
+  corrected ids from uncommitted_issues; workflow passes it only for
+  scan_path="."). dict_keys schema drift now scopes *Schema-constructor
+  literals separately from generic payloads and emits proven
+  corrections. 1209 plan/state/python tests pass.
+- Remaining #744 pending: py #693 #691 #690 #688 #687 #673 #685,
+  C# #682, TS #697, cxx #732 (closed unmerged).
 - Desloppify queue: DONE. Next: Dvorinka/cloudreve (#412 #369; PRs
   #414 #413), then Nothing_Modes.
 

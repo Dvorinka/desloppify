@@ -182,7 +182,7 @@ against fork HEAD `3a7735d` (v1.0). Verdicts:
 | #802 exact issue ID precedence over prefix | DONE | |
 | #762 config excludes in bandit + module-installed bandit | DONE | |
 | #750 count CommonJS require() as import edge | DONE | superseded by ported #874+#920 |
-| #744 integrate 27 reviewed PRs | TRACK | mined — ported #729+#733 cxx regex atomic groups; covered: #696 #743 #689 #692 #713 #710 #703 #699 #741; SKIP: #676 #677 #680 kotlin, #730/#737/#738 windows-runner, #731 #734 gdscript, #740 dup; pending candidates: #695 #694 #693 #691 #690 #688 #687 #673 #685 (py), #682 (C#), #697 (TS), #732 (cxx) |
+| #744 integrate 27 reviewed PRs | TRACK | mined — ported #729+#733 cxx regex atomic groups, #695 bandit discovered-files coverage, #694 schema-correction contexts; covered: #696 #743 #689 #692 #713 #710 #703 #699 #741; SKIP: #676 #677 #680 kotlin, #730/#737/#738 windows-runner, #731 #734 gdscript, #740 dup; pending candidates: #693 #691 #690 #688 #687 #673 #685 (py), #682 (C#), #697 (TS), #732 (cxx) |
 | #741 rust member/nested-worktree boundaries | DONE | |
 | #740 Kotlin operator convention imports | SKIP | |
 | #739 JVM imports in Gradle/Maven roots | DONE | |
