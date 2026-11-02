@@ -337,6 +337,74 @@ class TestConstantReturn:
         entries, _ = detect_smells(path)
         assert "constant_return" not in _smell_ids(entries)
 
+    def test_cli_main_guarded_by_module_entrypoint_is_not_flagged(self, tmp_path):
+        path = _write_py(
+            tmp_path,
+            '''\
+            def main(argv=None):
+                if argv:
+                    return 0
+                return 0
+
+
+            if __name__ == "__main__":
+                raise SystemExit(main())
+            ''',
+        )
+
+        entries, _ = detect_smells(path)
+
+        assert "constant_return" not in _smell_ids(entries)
+
+    def test_unguarded_main_with_constant_returns_is_flagged(self, tmp_path):
+        path = _write_py(
+            tmp_path,
+            '''\
+            def main(argv=None):
+                if argv:
+                    return 0
+                return 0
+            ''',
+        )
+
+        entries, _ = detect_smells(path)
+        constant_return = next(
+            (entry for entry in entries if entry["id"] == "constant_return"),
+            None,
+        )
+
+        assert constant_return is not None
+        assert any("main()" in match["content"] for match in constant_return["matches"])
+
+    def test_module_main_guard_does_not_exempt_other_constant_function(self, tmp_path):
+        path = _write_py(
+            tmp_path,
+            '''\
+            def main(argv=None):
+                if argv:
+                    return 0
+                return 0
+
+            def render(argv=None):
+                if argv:
+                    return 0
+                return 0
+
+
+            if __name__ == "__main__":
+                raise SystemExit(main())
+            ''',
+        )
+
+        entries, _ = detect_smells(path)
+        constant_return = next(
+            (entry for entry in entries if entry["id"] == "constant_return"),
+            None,
+        )
+
+        assert constant_return is not None
+        assert any("render()" in match["content"] for match in constant_return["matches"])
+
     def test_nested_function_returns_are_ignored(self, tmp_path):
         path = _write_py(
             tmp_path,
