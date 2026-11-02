@@ -72,12 +72,6 @@ def test_unenriched_clusters_flags_missing_requirements() -> None:
                 "auto": False,
                 "issue_ids": ["review::a", "review::b"],
             },
-            "small_needs_more_steps": {
-                "auto": False,
-                "issue_ids": ["review::c", "review::d", "review::e"],
-                "description": "ok",
-                "action_steps": ["one", "two"],
-            },
             "large_has_steps": {
                 "auto": False,
                 "issue_ids": ["r1", "r2", "r3", "r4", "r5"],
@@ -92,9 +86,9 @@ def test_unenriched_clusters_flags_missing_requirements() -> None:
     assert "auto_cluster" not in gaps
     assert "empty_cluster" not in gaps
     assert gaps["needs_everything"] == ["description", "action_steps"]
-    assert gaps["small_needs_more_steps"] == [
-        "action_steps (have 2, need >= 3 for small cluster — or cover every issue via step issue_refs)"
-    ]
+    # Upstream #850: consolidated steps are always allowed — a small
+    # cluster with fewer steps than issues is no longer a gap.
+    assert "small_needs_more_steps" not in gaps
     assert "large_has_steps" not in gaps
 
 
@@ -236,9 +230,9 @@ def test_validate_stage_report_length_requires_longer_report_for_larger_issue_co
     assert "Add concrete evidence." in out
 
 
-def test_unenriched_clusters_accepts_consolidated_steps_with_issue_refs() -> None:
-    """#888: a consolidated step counts when its issue_refs cover every
-    member — matching the organize prompt's consolidate-by-file guidance."""
+def test_unenriched_clusters_accepts_consolidated_steps() -> None:
+    """#888/#850: consolidated steps satisfy small clusters — step count
+    is no longer gated; refs/detail are validated at enrich."""
     plan = {
         "clusters": {
             "consolidated_covered": {
@@ -265,6 +259,4 @@ def test_unenriched_clusters_accepts_consolidated_steps_with_issue_refs() -> Non
     gaps = dict(stage_helpers_mod.unenriched_clusters(plan))
 
     assert "consolidated_covered" not in gaps
-    assert gaps["consolidated_partial"] == [
-        "action_steps (have 2, need >= 3 for small cluster — or cover every issue via step issue_refs)"
-    ]
+    assert "consolidated_partial" not in gaps

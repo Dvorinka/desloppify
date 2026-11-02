@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from desloppify.base.output.terminal import colorize
 from desloppify.engine._plan.constants import is_synthetic_id
-from desloppify.engine._state.issue_semantics import is_review_work_item, is_triage_finding
+from desloppify.engine._state.issue_semantics import is_review_work_item
 from desloppify.engine.plan_triage import TRIAGE_IDS
 
 from ..review_coverage import (
@@ -114,38 +114,19 @@ def unenriched_clusters(
 
     Requirements:
     - Every cluster needs a description and at least one action_step.
-    - Small clusters (< 5 issues) need at least 1 action step per issue,
-      so each item has a concrete plan. Large clusters (>= 5) just need
-      steps overall (cluster-level plan is sufficient).
-    - Consolidated steps also satisfy small clusters when their
-      issue_refs cover every member (#888) — the organize prompt tells
-      runners to consolidate by file/logical change, so a raw step count
-      would contradict it.
+    - An action step may cover multiple related issues. Step detail and issue
+      references are validated by the later enrich stage.
     """
     gaps: list[tuple[str, list[str]]] = []
     clusters = plan.get("clusters", {})
     for name in scoped_manual_clusters_with_issues(plan, state):
         cluster = clusters.get(name, {})
-        issue_ids = cluster_issue_ids(cluster)
         missing: list[str] = []
         if not cluster.get("description"):
             missing.append("description")
         steps = cluster.get("action_steps") or []
-        issue_count = len(issue_ids)
         if not steps:
             missing.append("action_steps")
-        elif issue_count < 5 and len(steps) < issue_count:
-            covered = {
-                str(ref)
-                for step in steps
-                if isinstance(step, dict)
-                for ref in (step.get("issue_refs") or [])
-            }
-            if not all(str(iid) in covered for iid in issue_ids):
-                missing.append(
-                    f"action_steps (have {len(steps)}, need >= {issue_count} "
-                    "for small cluster — or cover every issue via step issue_refs)"
-                )
         if missing:
             gaps.append((name, missing))
     return gaps
