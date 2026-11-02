@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 import os
 import re
+from functools import lru_cache
 from typing import TYPE_CHECKING
 
 from .. import PARSE_INIT_ERRORS
@@ -88,6 +89,7 @@ def detect_unused_imports(
         return _detect_unused_imports_ecmascript(file_list, spec, parser, language)
 
     query = _make_query(language, spec.import_query)
+    implicit_uses = _compile_implicit_uses(getattr(spec, "implicit_import_uses", ()))
     entries: list[dict] = []
     sourced_symbol_cache: dict[str, frozenset[str]] = {}
 
@@ -110,6 +112,10 @@ def detect_unused_imports(
 
             raw_path = _node_text(path_node).strip("\"'`")
             if not raw_path:
+                continue
+
+            # Wildcard imports (Kotlin/Java `import a.b.*`) bind no single name.
+            if _node_text(import_node).rstrip().rstrip(";").endswith("*"):
                 continue
 
             # Go blank (`_ "pkg"`) and dot (`. "pkg"`) imports are never
@@ -154,7 +160,8 @@ def detect_unused_imports(
             if alias_name is None and spec.grammar == "go":
                 name = _extract_go_package_name(raw_path)
             else:
-                name = alias_name or _extract_import_name(raw_path)
+                # Backtick-escaped names (Kotlin ``Mockito.`when```) are used escaped.
+                name = (alias_name or _extract_import_name(raw_path)).strip("`")
             if not name:
                 continue
 
@@ -174,7 +181,10 @@ def detect_unused_imports(
                     continue
 
             # Check if the name appears in the rest of the file.
-            if not re.search(r'\b' + re.escape(name) + r'\b', rest):
+            if re.search(r'\b' + re.escape(name) + r'\b', rest):
+                continue
+            implicit = implicit_uses.get(name)
+            if implicit is None or not implicit.search(rest):
                 entries.append({
                     "file": filepath,
                     "line": import_node.start_point[0] + 1,
@@ -182,6 +192,11 @@ def detect_unused_imports(
                 })
 
     return entries
+
+
+@lru_cache(maxsize=32)
+def _compile_implicit_uses(pairs: tuple[tuple[str, str], ...]) -> dict[str, re.Pattern[str]]:
+    return {name: re.compile(pattern) for name, pattern in pairs}
 
 
 def _bash_sourced_symbols(
@@ -517,7 +532,7 @@ def _extract_alias(import_node) -> str | None:
             found_as = True
             continue
         # The node immediately after "as" is the alias name.
-        if found_as and child.type in ("name", "identifier", "namespace_name"):
+        if found_as and child.type in ("name", "identifier", "namespace_name", "type_identifier"):
             return _node_text(child)
     return None
 
@@ -535,7 +550,7 @@ def _iter_children(node):
             yield child
         elif child.type in (
             "namespace_use_clause", "import_clause",
-            "namespace_alias", "as_pattern",
+            "namespace_alias", "as_pattern", "import_alias",
         ):
             yield from _iter_children(child)
 
