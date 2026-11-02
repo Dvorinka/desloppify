@@ -10,10 +10,9 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from desloppify.languages.framework import LangRun
 
-from desloppify.app.commands.helpers.lang import resolve_lang, resolve_lang_settings
 from desloppify.app.commands.helpers.command_runtime import command_runtime
+from desloppify.app.commands.helpers.lang import resolve_lang, resolve_lang_settings
 from desloppify.app.commands.helpers.runtime_options import resolve_lang_runtime_options
-from desloppify.base.config import target_strict_score_from_config
 from desloppify.app.commands.scan.coverage import (
     coerce_int as _coerce_int,
 )
@@ -23,9 +22,6 @@ from desloppify.app.commands.scan.coverage import (
 from desloppify.app.commands.scan.coverage import (
     seed_runtime_coverage_warnings as _seed_runtime_coverage_warnings,
 )
-from desloppify.app.commands.scan.plan_reconcile import (
-    reconcile_plan_post_scan as _reconcile_plan_post_scan_impl,
-)
 from desloppify.app.commands.scan.helpers import (
     audit_excluded_dirs,
     collect_codebase_metrics,
@@ -33,29 +29,41 @@ from desloppify.app.commands.scan.helpers import (
     resolve_scan_profile,
     warn_no_reviewable_files,
 )
+from desloppify.app.commands.scan.plan_reconcile import (
+    load_scan_false_positive_skip_ids,
+)
+from desloppify.app.commands.scan.plan_reconcile import (
+    reconcile_plan_post_scan as _reconcile_plan_post_scan_impl,
+)
 from desloppify.app.commands.scan.wontfix import (
     augment_with_stale_wontfix_issues as _augment_stale_wontfix_impl,
 )
 from desloppify.base.config import save_config as _save_config
+from desloppify.base.config import target_strict_score_from_config
 from desloppify.base.discovery.file_paths import rel
-from desloppify.base.output.terminal import colorize
+from desloppify.base.discovery.paths import get_project_root
 from desloppify.base.discovery.source import (
     disable_file_cache,
     enable_file_cache,
     get_exclusions,
 )
-from desloppify.base.discovery.paths import get_project_root
+from desloppify.base.exception_sets import PLAN_LOAD_EXCEPTIONS
+from desloppify.base.output.terminal import colorize
+from desloppify.base.subjective_dimensions import (
+    resettable_default_dimensions,
+)
+from desloppify.engine._plan.persistence import load_plan
+from desloppify.engine._plan.scan_issue_reconcile import reconcile_plan_after_scan
 from desloppify.engine._state.filtering import path_scoped_issues
 from desloppify.engine._state.merge import MergeScanOptions, merge_scan
 from desloppify.engine._state.noise import (
     apply_issue_noise_budget,
     resolve_issue_noise_settings,
 )
+from desloppify.engine._state.schema import scan_source
 from desloppify.engine._work_queue.issues import mark_stale_holistic
-from desloppify.engine.planning.scan import PlanScanOptions, generate_issues as generate_plan_issues
-from desloppify.base.subjective_dimensions import (
-    resettable_default_dimensions,
-)
+from desloppify.engine.planning.scan import PlanScanOptions
+from desloppify.engine.planning.scan import generate_issues as generate_plan_issues
 from desloppify.languages.framework import (
     DetectorCoverageRecord,
     LangRunOverrides,
@@ -64,7 +72,13 @@ from desloppify.languages.framework import (
     make_lang_run,
     reset_script_import_caches,
 )
-from desloppify.state_io import StateModel, ensure_state_defaults, save_state, state_lock, utc_now
+from desloppify.state_io import (
+    StateModel,
+    ensure_state_defaults,
+    save_state,
+    state_lock,
+    utc_now,
+)
 from desloppify.state_scoring import ScoreSnapshot, score_snapshot
 
 _WONTFIX_DECAY_SCANS_DEFAULT = 20
@@ -470,6 +484,16 @@ def merge_scan_results(
             if key in prep_state and prep_state[key] != state.get(key):
                 state[key] = prep_state[key]
 
+        # When the lock reload is a plan reconstruction (no real persisted
+        # scan state existed), it is derived from the same plan recovery as
+        # the runtime state and is strictly less informed: the runtime work
+        # rows, scan_count and last_scan keep merge evidence authoritative
+        # (reappearance cycles, skip expiry) (#881).
+        if scan_source(state) == "plan_reconstruction":
+            for key in ("work_items", "issues", "scan_count", "last_scan"):
+                if key in prep_state and prep_state[key] != state.get(key):
+                    state[key] = prep_state[key]
+
         prev_scan_path = state.get("scan_path")
         path_changed = prev_scan_path is not None and prev_scan_path != scan_path_rel
 
@@ -492,6 +516,7 @@ def merge_scan_results(
                 lang=runtime.lang.name if runtime.lang else None,
                 scan_path=scan_path_rel,
                 force_resolve=getattr(runtime.args, "force_resolve", False),
+                canonical_false_positive_ids=load_scan_false_positive_skip_ids(runtime.state_path),
                 exclude=get_exclusions(),
                 potentials=potentials,
                 codebase_metrics=codebase_metrics,
@@ -506,9 +531,28 @@ def merge_scan_results(
         mark_stale_holistic(
             state, runtime.config.get("holistic_max_age_days", 30)
         )
+        # Persist the raw merged state before the canonical plan reconciliation
+        # rewrites dispositions: the transient reopened row must be recorded
+        # (upstream saves the merge first, then reconciles the plan) (#881).
+        save_state(state, runtime.state_path, subjective_integrity_target=target_score)
+        # Canonical plan dispositions must land on the locked state before
+        # it persists — otherwise the saved file keeps the raw reopened
+        # status and the next merge cannot see the skip (#881).
+        try:
+            locked_plan = load_plan(runtime.state_path.parent / "plan.json")
+        except PLAN_LOAD_EXCEPTIONS:
+            locked_plan = None
+        if isinstance(locked_plan, dict):
+            reconcile_plan_after_scan(locked_plan, state)
         # Downstream consumers (plan reconcile, reporting, badge) read the
-        # merged state via runtime.state — point it at the locked copy.
-        runtime.state = state
+        # merged state via runtime.state — mutate it in place so existing
+        # references (fixtures, callers holding the pre-merge dict) observe
+        # the merged rows rather than a stale snapshot (#881).
+        if runtime.state is not state and isinstance(runtime.state, dict):
+            runtime.state.clear()
+            runtime.state.update(state)
+        else:
+            runtime.state = state
 
     _clear_needs_rescan_flag(runtime.config)
     runtime.scan_diff = diff

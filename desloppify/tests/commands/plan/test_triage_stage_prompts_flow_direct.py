@@ -211,6 +211,7 @@ def test_run_stage_enrich_ignores_legacy_clusters_for_empty_frozen_scope(
             "legacy": {
                 "auto": False,
                 "issue_ids": ["review::legacy"],
+                "execution_status": "done",
                 "action_steps": [{"title": "underspecified legacy step"}],
             },
         },
@@ -301,12 +302,16 @@ def test_sense_check_evidence_ignores_legacy_clusters_for_empty_frozen_scope() -
     plan = {
         "epic_triage_meta": {"active_triage_issue_ids": []},
         "clusters": {
-            "legacy": {"auto": False, "issue_ids": ["review::legacy"]},
+            "legacy": {
+                "auto": False,
+                "issue_ids": ["review::legacy"],
+                "execution_status": "done",
+            },
         },
     }
     state = {
         "issues": {
-            "review::legacy": {"status": "open", "detector": "review"},
+            "review::legacy": {"status": "fixed", "detector": "review"},
         },
     }
 

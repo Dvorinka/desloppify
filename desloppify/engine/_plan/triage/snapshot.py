@@ -59,7 +59,7 @@ def active_triage_issue_ids(plan: PlanModel, state: StateModel | None = None) ->
     """Return the frozen review issue set for the current triage run."""
     meta = plan.get("epic_triage_meta", {})
     active_ids = _normalized_issue_id_list(meta.get("active_triage_issue_ids"))
-    if "active_triage_issue_ids" in meta:
+    if "active_triage_issue_ids" in meta and active_ids:
         return set(active_ids)
     if state is None:
         return set()

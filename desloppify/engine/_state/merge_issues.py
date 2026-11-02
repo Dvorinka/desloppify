@@ -261,6 +261,7 @@ def upsert_issues(
     *,
     lang: str | None,
     ignore_metadata: Mapping[str, Any] | None = None,
+    canonical_false_positive_ids: frozenset[str] = frozenset(),
 ) -> tuple[set[str], int, int, dict[str, int], int, set[str]]:
     """Insert new issues and update existing ones.
 
@@ -337,6 +338,13 @@ def upsert_issues(
         previous["suppressed_at"] = None
         previous["suppression_pattern"] = None
 
+        # A reappearing accepted finding ends its corroborated absence even
+        # when both scans share the same timestamp second.
+        if previous["status"] == "wontfix":
+            attestation = previous.get("resolution_attestation")
+            if isinstance(attestation, dict):
+                attestation["scan_verified"] = False
+
         if previous["status"] in ("fixed", "auto_resolved", "false_positive"):
             # Review-request issues are condition-based. When just
             # completed by an agent import, skip reopening to avoid a
@@ -359,7 +367,13 @@ def upsert_issues(
                 ),
             )
             reopened_count += 1
-            changed_detectors.add(detector)
+            # Keep raw reopen semantics, while excluding only a same-ID
+            # false positive that canonical plan policy will restore.
+            if (
+                previous_status != "false_positive"
+                or issue_id not in canonical_false_positive_ids
+            ):
+                changed_detectors.add(detector)
 
     return current_ids, new_count, reopened_count, by_detector, ignored_count, changed_detectors
 

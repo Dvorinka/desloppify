@@ -131,8 +131,8 @@ against fork HEAD `3a7735d` (v1.0). Verdicts:
 | PR | Verdict | Note |
 |---|---|---|
 | #938 require detector evidence for manual scan verification | DONE | 243638ba — upstream PR port |
-| #937 attribute strategist work to scored dimensions | TRACK | |
-| #935 enforce trusted review coverage | TRACK | |
+| #937 attribute strategist work to scored dimensions | DONE | 984a26dc — upstream PR port |
+| #935 enforce trusted review coverage | DONE | fa91641c — upstream PR port |
 | #926 Next.js entrypoints in nested packages | DONE | |
 | #925/#924 TS aliases against each importer tsconfig | DONE | 36dfaf86 + 324811f2 |
 | #920 JS import edges across scan root | DONE | |
@@ -145,18 +145,18 @@ against fork HEAD `3a7735d` (v1.0). Verdicts:
 | #901 cxx response-file/transitive header includes | DONE | |
 | #899 cxx false API matches + security fallback | DONE | |
 | #897 resolve relative scan roots before tool exclusions | DONE | pairs with #904 |
-| #891 shared queue context review targets | TRACK | |
+| #891 shared queue context review targets | DONE | d89f3562 — upstream PR port |
 | #890 C# precise deps + iterator control flow | DONE | |
 | #889 external scanner exclusions → absolute paths | DONE | same family as #897 |
-| #881 review freshness + queue prerequisites | TRACK | |
-| #880 unchanged scan corroboration invalidating reviews | TRACK | |
+| #881 review freshness + queue prerequisites | DONE | upstream PR port — canonical FP-only freshness suppression, pre-save plan reconcile, FP-only plan reconstruction restore |
+| #880 unchanged scan corroboration invalidating reviews | DONE | 5358e946 — upstream PR port |
 | #879 persist strategy work-item resolution | DONE | adbe6c96 — upstream PR port + queue-purge completion |
 | #878 Dart signature analysis | SKIP | dart |
-| #877 plan override IDs one canonical batch | TRACK | |
+| #877 plan override IDs one canonical batch | DONE | 9beefa13 — upstream PR port |
 | #876 Dart import semantics | SKIP | |
 | #875 ignore overlapping spans in duplicate matching | DONE | dupes |
 | #874 JS dep edges for relative paths + CommonJS | DONE | overlaps #920 — take one |
-| #870 completed findings preserved on cluster defer | TRACK | |
+| #870 completed findings preserved on cluster defer | DONE | d42ec911 — upstream PR port |
 | #869 C++ unused-function across batches | DONE | |
 | #868 nonzero status for invalid show usage | DONE | trivial CLI correctness |
 | #865 cxx Unreal automation tests | SKIP | Unreal |
@@ -166,11 +166,11 @@ against fork HEAD `3a7735d` (v1.0). Verdicts:
 | #857 preserve scan scope through review imports | DONE | 15fc5571 — upstream PR port |
 | #852 ignore future-only Python facade imports | DONE | |
 | #851 configured target in review preflight | DONE | 951f6224 — upstream PR port |
-| #850 consolidated triage organize steps | TRACK | |
+| #850 consolidated triage organize steps | DONE | 11ead1cd — upstream PR port |
 | #848 filtered empty views vs completed queues | DONE | 3954eb8b — upstream PR port |
-| #844 scan isolation + review workflow consistency | TRACK | umbrella — review before porting |
+| #844 scan isolation + review workflow consistency | DONE | ecaebee7 — state_lock merge + preflight config propagation |
 | #841 frozen review scope in triage collection | DONE | c6939cac — upstream PR port + empty-frozen coverage fix |
-| #840 fully covered selected-dimension reviews | TRACK | |
+| #840 fully covered selected-dimension reviews | DONE | 7eefcfd2 — upstream PR port |
 | #837 review state + detector verification scope | DONE | upstream PR #837 port |
 | #836 deliberate skip dispositions across scans | DONE | da6ce101 — upstream PR #836 port |
 | #835 queue targets + scope plans to state files | DONE | upstream PR #835 port |

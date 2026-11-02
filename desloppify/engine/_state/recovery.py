@@ -183,6 +183,7 @@ def has_saved_plan_without_scan(state: dict, plan: dict | None) -> bool:
     return bool(
         plan.get("queue_order")
         or plan.get("clusters")
+        or plan.get("skipped")
         or triage_meta.get("triage_stages")
         or triage_meta.get("strategy_summary")
     )
@@ -213,8 +214,21 @@ def _hydrate_saved_issue_ids(
     return recovered
 
 
-def reconcile_saved_plan_skips(state: dict, plan: dict | None) -> tuple[dict, int]:
-    """Restore state statuses for issue IDs preserved only in plan.skipped."""
+def reconcile_saved_plan_skips(
+    state: dict,
+    plan: dict | None,
+    *,
+    restore_kinds: set[str] | None = None,
+) -> tuple[dict, int]:
+    """Restore state statuses for issue IDs preserved only in plan.skipped.
+
+    When ``restore_kinds`` is given, only entries with those kinds are
+    restored. The merge-evidence path restricts this to the canonical
+    false-positive kind (#881): seeding non-FP kind rows (permanent →
+    wontfix, temporary → deferred) would fabricate an existing defunct row,
+    so a reappearance under a changed or non-FP skip never counts as
+    mechanical evidence.
+    """
     skipped = saved_plan_skipped_entries(plan)
     if not skipped:
         return state, 0
@@ -227,6 +241,8 @@ def reconcile_saved_plan_skips(state: dict, plan: dict | None) -> tuple[dict, in
 
     for issue_id, entry in skipped.items():
         kind = str(entry.get("kind") or "temporary")
+        if restore_kinds is not None and kind not in restore_kinds:
+            continue
         target_status = skip_kind_state_status(kind)
         if not target_status:
             continue
@@ -268,10 +284,23 @@ def recover_state_from_saved_plan(state: dict, plan: dict | None) -> dict:
 
 
 def reconstruct_state_from_saved_plan(state: dict, plan: dict | None) -> dict:
-    """Hydrate only the review IDs still present in the live queue."""
+    """Hydrate only the review IDs still present in the live queue.
+
+    Skip restoration is restricted to canonical false-positive entries: only
+    an active exact-ID false_positive skip is excluded from freshness
+    evidence, so only it may seed a pre-merge state row. Other skipped rows
+    surface as genuine evidence via the merge itself and their terminal
+    statuses are re-synced by the post-scan plan reconciliation (#881).
+    """
     if not has_saved_plan_without_scan(state, plan):
         return state
-    return _hydrate_saved_issue_ids(state, saved_plan_open_review_ids(plan))
+    hydrated = _hydrate_saved_issue_ids(state, saved_plan_open_review_ids(plan))
+    reconciled, _ = reconcile_saved_plan_skips(
+        hydrated,
+        plan,
+        restore_kinds={"false_positive"},
+    )
+    return reconciled
 
 
 __all__ = [

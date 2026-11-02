@@ -6,6 +6,7 @@ subjective dimension items, and subjective score lookups.
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
 
 from desloppify.engine._plan.constants import (
@@ -286,6 +287,26 @@ def build_subjective_items(
         assessed_at = str(payload.get("assessed_at", "")).strip()
         if assessed_at == "":
             return False
+        if refresh_reason == "review_issue_fixed":
+            # A later fix invalidates the assessment independently of its import.
+            # Suppress only when trusted review demonstrably covers that fix.
+            try:
+                assessed_time, imported_time, stale_time = (
+                    datetime.fromisoformat(timestamp)
+                    for timestamp in (
+                        assessed_at,
+                        latest_trusted_audit_ts,
+                        str(payload.get("stale_since", "")).strip(),
+                    )
+                )
+            except ValueError:
+                return False
+            if any(
+                timestamp.utcoffset() is None
+                for timestamp in (assessed_time, imported_time, stale_time)
+            ):
+                return False
+            return stale_time < assessed_time and assessed_time >= imported_time
         return assessed_at >= latest_trusted_audit_ts
 
     def _prepare_command(

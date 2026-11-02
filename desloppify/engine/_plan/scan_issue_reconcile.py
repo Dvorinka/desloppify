@@ -377,13 +377,14 @@ def _reconcile_epic_clusters(
 
 
 def _restore_skip_resolution_metadata(issue: dict, entry: dict) -> None:
-    """Repair metadata after scan merge spuriously reopened a durable skip.
+    """Repair metadata after scan merge reopened a durable skip.
 
     upsert_issues reopens fixed/auto_resolved/false_positive findings that
     reappear in detector output before the plan reconcile restores the
     skip-kind status. The terminal row should look like the adjudicated
-    skip — not an unresolved reopen — so the stale reopen note, null
-    resolution fields, and spurious reopen_count bump are reverted here.
+    skip — not an unresolved reopen — so the stale reopen note and null
+    resolution fields are restored. The reopen_count bump stays: each
+    reappearance is genuine re-detection history (#881).
     """
     note = issue.get("note")
     if not isinstance(note, str) or not note.startswith("Reopened (×"):
@@ -397,7 +398,22 @@ def _restore_skip_resolution_metadata(issue: dict, entry: dict) -> None:
         "attested_at": skipped_at,
         "scan_verified": False,
     }
-    issue["reopen_count"] = max(0, int(issue.get("reopen_count") or 0) - 1)
+
+
+def active_false_positive_skip_ids(plan: PlanModel) -> frozenset[str]:
+    """Return exact skips that scan reconciliation will restore as false positives.
+
+    Only temporary skips expire via review_after. Explicit false-positive
+    skips remain active until removed or superseded.
+    """
+    superseded = plan.get("superseded", {})
+    return frozenset(
+        issue_id
+        for issue_id, entry in plan.get("skipped", {}).items()
+        if issue_id not in superseded
+        and isinstance(entry, dict)
+        and entry.get("kind") == "false_positive"
+    )
 
 
 def _sync_skipped_issue_statuses(plan: PlanModel, state: StateModel) -> None:
@@ -508,4 +524,5 @@ def reconcile_plan_after_scan(
 __all__ = [
     "ReconcileResult",
     "reconcile_plan_after_scan",
+    "active_false_positive_skip_ids",
 ]

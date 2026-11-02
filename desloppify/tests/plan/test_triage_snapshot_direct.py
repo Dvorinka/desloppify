@@ -60,7 +60,7 @@ def test_empty_frozen_scope_means_unfrozen_coverage() -> None:
     }
 
     assert snapshot_mod.coverage_open_ids(plan, state) == {"review::new"}
-    assert snapshot_mod.active_triage_issue_ids(plan, state) == set()
+    assert snapshot_mod.active_triage_issue_ids(plan, state) == {"review::new"}
 
 
 def test_manual_clusters_with_issues_and_find_cluster_for_ignore_auto_clusters() -> None:

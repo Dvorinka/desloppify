@@ -139,3 +139,34 @@ Committed on maint/continuation:
 - #845 summary_hash→id index resolves holistic citations/verdicts in
   observe (citation count, YAML verdict parse, short-hash resolution).
   23098f74.
+
+## Session 2026-11-02 (IX) — upstream PR #881 ported
+- Applied upstream #881 via git apply --reject; resolved ~10 .rej files
+  (most were already-merged content). Suite 6356 passed; only the two
+  known environmental dry-run failures remain.
+- Canonical skip freshness: only an active exact-ID false_positive skip
+  suppresses review refresh. merge_scan_results loads canonical FP ids,
+  passes them to upsert (raw reopen kept, evidence suppressed only for
+  canonical FP), and runs reconcile_plan_after_scan inside the state lock
+  before saving, so dispositions persist for reopen-cycle counting.
+  runtime.state now updated in place (clear+update) so caller-held rows
+  stay visible.
+- Fork-lock adaptation: reconstruct_state_from_saved_plan restricts skip
+  restoration to false_positive-kind entries (restore_kinds param;
+  non-FP kinds must not fabricate pre-merge defunct rows or reappearances
+  never count as evidence). repair_state path still restores all kinds.
+  When the locked reload is a plan reconstruction, merge adopts the
+  runtime work_items/issues/scan_count/last_scan (reconstruction is
+  strictly less informed).
+- workflow merge saves the raw merged state through the module
+  save_state before the in-lock canonical reconciliation (upstream save
+  ordering, observable two-phase). Restored imports dropped by the
+  port's rej merge (_reconcile_plan_post_scan_impl,
+  resettable_default_dimensions) — these had silently broken
+  tests/scan integration paths.
+- Ported test test_app_canonical_skip_freshness.py (14 cases) — one
+  fork-contract adaptation: absence-after-same-second re-reads the row
+  after the second run (state round-trips through disk between scans).
+- #881 committed this session; PORTS.md rows updated (#881 #844 #880
+  #877 #850 #840 #891 #935 #937 #870 DONE).
+- Commit: fix: preserve review freshness and queue prerequisites (#881)

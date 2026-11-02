@@ -924,12 +924,13 @@ def test_validate_stage_enrich_ignores_legacy_clusters_for_empty_frozen_scope(
     plan["clusters"] = {
         "legacy": {
             "issue_ids": ["review::legacy"],
+            "execution_status": "done",
             "action_steps": [{"title": "underspecified legacy step"}],
         },
     }
     state = {
         "issues": {
-            "review::legacy": {"status": "open", "detector": "review"},
+            "review::legacy": {"status": "fixed", "detector": "review"},
         },
     }
 

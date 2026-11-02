@@ -170,15 +170,21 @@ def test_unclustered_review_issues_ignores_stale_frozen_triage_ids() -> None:
 
 
 def test_empty_frozen_triage_scope_excludes_legacy_manual_clusters() -> None:
+    """Frozen-empty scope means no live review issues — a completed
+    cluster's resolved member must not expand or re-enter the scope."""
     plan = {
         "epic_triage_meta": {"active_triage_issue_ids": []},
         "clusters": {
-            "legacy": {"auto": False, "issue_ids": ["review::legacy"]},
+            "legacy": {
+                "auto": False,
+                "issue_ids": ["review::legacy"],
+                "execution_status": "done",
+            },
         },
     }
     state = {
         "issues": {
-            "review::legacy": {"status": "open", "detector": "review"},
+            "review::legacy": {"status": "fixed", "detector": "review"},
         },
     }
 

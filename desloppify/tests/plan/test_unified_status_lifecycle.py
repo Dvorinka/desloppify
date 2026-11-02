@@ -430,7 +430,7 @@ class TestReconcileDataMigration:
         reconcile_plan_after_scan(plan, state)
         row = state["work_items"]["fp1"]
         assert row["status"] == "false_positive"
-        assert row["reopen_count"] == 0
+        assert row["reopen_count"] == 1  # reappearance is genuine history (#881)
         assert row["note"] == "accepted"
         assert row["resolved_at"] == skipped_at
         attestation = row["resolution_attestation"]
@@ -438,8 +438,8 @@ class TestReconcileDataMigration:
         assert attestation["text"] == "reviewed"
 
     def test_reconcile_restore_keeps_genuine_reopen_count(self):
-        """A pre-existing reopen history is preserved; only the spurious
-        scan-merge bump is reverted."""
+        """A pre-existing reopen history plus each new reappearance is
+        preserved — the count is genuine re-detection history (#881)."""
         from desloppify.engine._state.merge_issues import upsert_issues
 
         plan = empty_plan()
@@ -464,7 +464,7 @@ class TestReconcileDataMigration:
         assert state["issues"]["fp1"]["reopen_count"] == 3
 
         reconcile_plan_after_scan(plan, state)
-        assert state["work_items"]["fp1"]["reopen_count"] == 2
+        assert state["work_items"]["fp1"]["reopen_count"] == 3
 
 
 # ---------------------------------------------------------------------------
