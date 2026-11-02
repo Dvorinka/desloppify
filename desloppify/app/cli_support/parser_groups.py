@@ -243,6 +243,11 @@ examples:
         dest="no_budget",
         help="Bypass per-detector noise budget (show all matching issues)",
     )
+    p_show.add_argument(
+        "--blind",
+        action="store_true",
+        help="Score-free output for blind reviewers: suppress plan footer and prior subjective scores",
+    )
 
 
 def _add_next_parser(sub) -> None:

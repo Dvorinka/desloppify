@@ -37,7 +37,7 @@ against fork HEAD `3a7735d` (v1.0). Verdicts:
 | #916 relative scan roots → relative Bandit exclusions | DONE | ported #897+#904 absolute exclusion dirs |
 | #915 Python dynamic import discovery ignores exclusions | DONE | find_py_files now used |
 | #909 Windows JS dep graph zero import edges | SKIP | Windows tree-sitter |
-| #908 blind review prompts leak prior subjective scores | TRACK | review pipeline |
+| #908 blind review prompts leak prior subjective scores | DONE | `show --blind` suppresses plan footer + subjective followup; review prompts emit --blind on suggested show commands |
 | #907 Python external-test mapping loses import roots | DONE | scan-root suffix match + windows sep normalization + potential label (a5d9059b) |
 | #906 skipped assessments select empty next queue | DONE | skipped filtered from postflight partitions (6871a47e) |
 | #905 Python coverage misses importlib hyphenated CLIs | DONE | spec_from_file_location/SourceFileLoader/load_source .py literals |

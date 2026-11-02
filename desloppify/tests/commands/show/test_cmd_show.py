@@ -497,6 +497,68 @@ class TestCmdShowBackendIntegration:
         assert "subjective dimension" in out
         assert "No open issues matching" not in out
 
+    def test_show_blind_suppresses_plan_and_score_footer(self, monkeypatch):
+        """--blind must never print prior scores or plan hints (#908)."""
+        self._patch_common(
+            monkeypatch,
+            state={"last_scan": "2026-01-01", "issues": {}, "scan_path": "."},
+        )
+        monkeypatch.setattr(show_cmd_mod, "write_query", lambda _payload: None)
+
+        def fake_queue(_state, **kwargs):
+            return {
+                "items": [
+                    {
+                        "id": "smells::src/a.py::x",
+                        "kind": "issue",
+                        "detector": "smells",
+                        "file": "src/a.py",
+                        "tier": 3,
+                        "confidence": "medium",
+                        "summary": "X",
+                        "detail": {},
+                        "status": "open",
+                    }
+                ]
+            }
+
+        monkeypatch.setattr(show_scope_mod, "build_work_queue", fake_queue)
+
+        calls = {"agent_plan": 0, "followup": 0, "guide": 0}
+        monkeypatch.setattr(
+            show_cmd_mod,
+            "show_agent_plan",
+            lambda *_a, **_k: calls.__setitem__("agent_plan", calls["agent_plan"] + 1),
+        )
+        monkeypatch.setattr(
+            show_cmd_mod,
+            "show_subjective_followup",
+            lambda *_a, **_k: calls.__setitem__("followup", calls["followup"] + 1),
+        )
+        monkeypatch.setattr(
+            show_cmd_mod,
+            "_render_subjective_views_guide",
+            lambda *_a, **_k: calls.__setitem__("guide", calls["guide"] + 1),
+        )
+
+        base = {
+            "pattern": "src/a.py",
+            "status": "open",
+            "chronic": False,
+            "code": False,
+            "top": 20,
+            "output": None,
+            "lang": None,
+            "path": ".",
+        }
+        cmd_show(SimpleNamespace(**base, blind=True))
+        assert calls == {"agent_plan": 0, "followup": 0, "guide": 0}
+
+        cmd_show(SimpleNamespace(**base, blind=False))
+        assert calls["agent_plan"] == 1
+        assert calls["followup"] == 1
+        assert calls["guide"] == 1
+
     def test_show_mechanical_dimension_not_labeled_subjective(
         self, monkeypatch, capsys
     ):

@@ -192,8 +192,8 @@ def render_historical_focus(batch: PromptBatchPayload) -> str:
 
     lines.append("")
     lines.append("Explore past review issues:")
-    lines.append("  desloppify show review --no-budget              # all open review issues")
-    lines.append("  desloppify show review --status deferred         # deferred issues")
+    lines.append("  desloppify show review --no-budget --blind      # all open review issues")
+    lines.append("  desloppify show review --status deferred --blind # deferred issues")
 
     return "\n".join(lines) + "\n\n"
 
@@ -310,7 +310,7 @@ def render_mechanical_concern_signals(batch: PromptBatchPayload) -> str:
 
     extra = max(0, len(valid_signals) - len(capped_signals))
     if extra:
-        lines.append(f"  (+{extra} more — use `desloppify show <detector> --no-budget` to explore)")
+        lines.append(f"  (+{extra} more — use `desloppify show <detector> --no-budget --blind` to explore)")
     return "\n".join(lines) + "\n\n"
 
 
@@ -345,7 +345,7 @@ def render_findings_exploration_section(batch: PromptBatchPayload) -> str:
         "",
     ]
     for detector, n in sorted(all_counts.items()):
-        lines.append(f"  desloppify show {detector} --no-budget      # {n} findings")
+        lines.append(f"  desloppify show {detector} --no-budget --blind  # {n} findings")
     lines.append("")
     lines.append(
         "Report actionable issues in issues[]. Use concern_verdict and concern_fingerprint"

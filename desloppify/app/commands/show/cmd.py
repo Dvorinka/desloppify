@@ -47,6 +47,7 @@ class ShowOptions:
     show_code: bool = False
     chronic: bool = False
     no_budget: bool = False
+    blind: bool = False
     output_file: str | None = None
     top: int = 20
 
@@ -57,6 +58,7 @@ class ShowOptions:
             show_code=bool(getattr(args, "code", False)),
             chronic=bool(getattr(args, "chronic", False)),
             no_budget=bool(getattr(args, "no_budget", False)),
+            blind=bool(getattr(args, "blind", False)),
             output_file=getattr(args, "output", None),
             top=int(getattr(args, "top", 20) or 20),
         )
@@ -210,14 +212,15 @@ def cmd_show(args: argparse.Namespace) -> None:
         global_noise_budget=global_noise_budget,
         budget_warning=budget_warning,
     )
-    plan_active = _active_plan_or_none()
-    show_agent_plan(narrative, surfaced_matches, plan=plan_active)
-    show_subjective_followup(
-        state,
-        target_strict_score_from_config(config),
-    )
+    if not opts.blind:
+        plan_active = _active_plan_or_none()
+        show_agent_plan(narrative, surfaced_matches, plan=plan_active)
+        show_subjective_followup(
+            state,
+            target_strict_score_from_config(config),
+        )
 
-    _render_subjective_views_guide(entity)
+        _render_subjective_views_guide(entity)
 
 
 __all__ = ["cmd_show"]

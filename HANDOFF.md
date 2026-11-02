@@ -353,6 +353,17 @@ Committed on maint/continuation:
   tests/state/test_matched_ignore_pattern.py (7 cases).
 - Next: #908, then TRACK backlog.
 
+## Session 2026-11-02 (XII cont.) — #908 closed
+- Blind-review leak: `desloppify show` printed an AGENT PLAN footer +
+  subjective followup (prior dimension scores) after mechanical output.
+  Added `show --blind`: skips show_agent_plan, show_subjective_followup,
+  and _render_subjective_views_guide. prompt_sections.py now emits
+  --blind on every suggested `desloppify show` navigation command.
+- Regression: test_show_blind_suppresses_plan_and_score_footer verifies
+  all three footers are skipped under --blind and fire without it.
+- Next: TRACK backlog #832 #823 #821 #815 #809 #805 #785 #779 #759 #754,
+  meta #686 #658/#650 #744.
+
 ## Then: Dvorinka/cloudreve
 - Issues: #412 (4.19.1 Docker image vulns — Go toolchain/modules/Alpine),
   #369 (upstream watch). PRs: #414 Android 2FA login+dark-mode form,
