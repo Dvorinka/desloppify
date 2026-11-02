@@ -26,7 +26,7 @@ CXX_FILE_EXCLUSIONS = [
 _FUNC_DECL_RE = re.compile(
     r"(?:(?:^)|(?<=[;}\n]))\s*"
     r"(?:(?:inline|static|constexpr|virtual|explicit|friend|extern|typename)\s+)*"
-    r"(?:[A-Za-z_~]\w*(?:::[A-Za-z_~]\w*)*(?:<[^;{}()]+>)?[\s*&]+)+"
+    r"(?>(?:[A-Za-z_~]\w*(?:::[A-Za-z_~]\w*)*(?:<[^;{}()]+>)?[\s*&]+)+)"
     r"([A-Za-z_~]\w*(?:::[A-Za-z_~]\w*)*)\s*"
     r"\(([^()]*)\)\s*"
     r"(?:const\s*)?"

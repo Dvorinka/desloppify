@@ -37,7 +37,7 @@ _PUBLIC_SECTION_RE = re.compile(
 )
 _FUNCTION_RE = re.compile(
     r"(?m)^\s*(?:inline\s+|static\s+|virtual\s+|constexpr\s+|friend\s+|extern\s+)*"
-    r"(?:[A-Za-z_~]\w*(?:::[A-Za-z_~]\w*)*(?:<[^;{}()]+>)?[\s*&:]+)+"
+    r"(?>(?:[A-Za-z_~]\w*(?:::[A-Za-z_~]\w*)*(?:<[^;{}()]+>)?[\s*&:]+)+)"
     r"([A-Za-z_~]\w*)\s*\([^;{}]*\)\s*(?:const\s*)?(?:;|\{)"
 )
 _CONTROL_KEYWORDS = {"if", "for", "while", "switch", "catch", "return"}

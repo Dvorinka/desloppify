@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import time
 from pathlib import Path
 
 import desloppify.languages.cxx.extractors as cxx_extractors
-from desloppify.languages.cxx.extractors import extract_all_cxx_functions, find_cxx_files
+from desloppify.languages.cxx.extractors import (
+    extract_all_cxx_functions,
+    find_cxx_files,
+)
 
 
 def test_extract_cxx_functions_and_classes(tmp_path):
@@ -103,3 +107,15 @@ def test_extract_params_normalizes_names_and_qualifiers(tmp_path):
     )
     functions = extract_all_cxx_functions([str(source)])
     assert functions[0].params == ["int", "char", "Reason", "EMode"]
+
+
+def test_func_decl_bounds_qualified_name_backtracking(tmp_path):
+    source = tmp_path / "deep.cpp"
+    source.write_text("::".join(["Type"] * 21) + " value = source;\n")
+
+    started = time.perf_counter()
+    functions = extract_all_cxx_functions([str(source)])
+    elapsed = time.perf_counter() - started
+
+    assert functions == []
+    assert elapsed < 0.25

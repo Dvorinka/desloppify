@@ -502,6 +502,24 @@ Committed on maint/continuation:
   queue work — no code change needed.
 - Next: meta row #744, then cloudreve.
 
+## Session 2026-11-02 (XIII cont.) — #744 mined
+- Ported #729 + #733: atomic groups `(?>...)` around the qualified-name
+  alternation in cxx/review.py _FUNCTION_RE and cxx/extractors.py
+  _FUNC_DECL_RE — catastrophic backtracking on `Type::Type::...` chains
+  (~5s -> 0.00002s upstream; verified 0.0s here). Timing regression tests
+  added to both cxx test files.
+- Already covered, no port needed: #696 (canonical file_set mapping from
+  #874/#920 port), #743 (queue targets #835 + backlog dedup #928/#929),
+  #689 (zone_policy resolution_kind in verify_disappeared),
+  #692 (strategy:: work-item resolution #900/#879).
+- SKIP adjudications: #676 #677 #680 (kotlin not exercised), #730
+  (Windows codex quoting, closed unmerged), #740 (dup of #676).
+- Pending port candidates for a future session (each needs diff review +
+  tests): python #695 #694 #693 #691 #690 #688 #687 #673 #685, C# #682,
+  TS #697, cxx #732 (closed unmerged).
+- Desloppify queue: DONE. Next: Dvorinka/cloudreve (#412 #369; PRs
+  #414 #413), then Nothing_Modes.
+
 ## Then: Dvorinka/cloudreve
 - Issues: #412 (4.19.1 Docker image vulns — Go toolchain/modules/Alpine),
   #369 (upstream watch). PRs: #414 Android 2FA login+dark-mode form,
