@@ -624,7 +624,11 @@ def merge_scan_results(
         # it persists — otherwise the saved file keeps the raw reopened
         # status and the next merge cannot see the skip (#881).
         try:
-            locked_plan = load_plan(runtime.state_path.parent / "plan.json")
+            locked_plan = load_plan(
+                runtime.state_path.parent / "plan.json"
+                if runtime.state_path is not None
+                else "plan.json"
+            )
         except PLAN_LOAD_EXCEPTIONS:
             locked_plan = None
         if isinstance(locked_plan, dict):
