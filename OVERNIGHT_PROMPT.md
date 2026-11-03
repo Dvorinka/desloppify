@@ -9,47 +9,37 @@ STARTUP (read all of these first):
 - ~/agent-memory/MEMORY.md (after `git -C ~/agent-memory pull --ff-only`)
 
 REPO: /home/tdvorak/Desktop/PROG+HTML/desloppify, branch maint/continuation,
-remote github.com/Dvorinka/desloppify. NEVER touch upstream peteromallet —
-read-only via `gh issue/pr view -R peteromallet/desloppify`.
+remote github.com/Dvorinka/desloppify — clean and fully pushed. NEVER touch
+upstream peteromallet — read-only via `gh issue/pr view -R peteromallet/desloppify`.
 
 DONE SO FAR (do not redo):
 - Original queue fully closed: desloppify issues/TRACK rows, cloudreve
   (#412 closed, #369 commented, PRs #413+#414 merged), Nothing_Modes
-  (SQLiteFullException fix → PR #42 merged → desloppify scan →
-  .desloppify-findings.md → released v0.19.17).
-- #744 mining: ported #729 #733 #695 #694 #693 #691 #690 #688 #687.
+  (full sweep done: PR #42 merged, desloppify scan run, findings file
+  written, release 0.19.17 tagged/published).
+- #744 fully mined. Ported: #729 #733 #695 #694 #693 #691 #690 #688 #687
+  #673 (a8d8d094) #685 (83e3a548) #682 (90301f66) #697 (b877f61a)
+  #732 (c9e95e0b). Covered: #696 #743 #689 #692 #713 #710 #703 #699 #741.
+  SKIP: #676 #677 #680 #730 #737 #738 #731 #734 #740.
 
 REMAINING WORK, in order:
 
-1. Finish the #744 pending port candidates. For EACH of:
-   py #673 (dict copy keysets), py #685 (reflect displayed dimension
-   names), C# #682 (Razor/Blazor views in dep graph + extension-filter
-   follow-up), TS #697 (React Router/Remix route modules as entry points),
-   cxx #732 (static test coverage mapping — CLOSED unmerged upstream,
-   port anyway if clean):
-   a. `gh pr diff N -R peteromallet/desloppify` — review the full diff
-      including tests.
-   b. Check whether the fork already covers it (earlier ports overlap —
-      verify behavior first; if covered, just note it).
-   c. Port the source change, adapting to the fork's structure (the fork
-      diverged: keep fork idioms like find_py_files exclusion-aware
-      discovery).
-   d. Port the upstream tests into the matching fork test file.
-   e. Run: `.venv/bin/python -m pytest <targeted test files> -q` and
-      `/home/tdvorak/.local/bin/ruff check <changed files>`.
-   f. Update the #744 row in PORTS.md (move the candidate from "pending"
-      to the ported list) and append a HANDOFF.md entry.
-   g. Commit (Conventional Commits + `Authored By: TDvorak
-      <info@tdvorak.dev>` trailer) and push.
+1. Ledger cleanup (5 min): PORTS.md row #744 still lists "pending
+   candidates: #697, #732, #673, #685, #682" — move them to the ported
+   list with their commit hashes above. HANDOFF.md's last session block
+   predates them; append one entry citing the five commits. Commit
+   `docs: record #744 port candidates landed` and push.
 
-2. Fresh upstream sweep for desloppify:
+2. Fresh upstream sweep for desloppify (a previous session started this
+   and was cut off with nothing recorded — start from scratch):
    `gh issue list -R peteromallet/desloppify --state open --limit 100`
    and `gh pr list -R peteromallet/desloppify --state open --limit 50`.
-   Anything filed after the last sweep (issues > #944, PRs not in
-   PORTS.md): triage each — verify applicability to the fork, port if
-   relevant, or record SKIP/adjudication in PORTS.md + HANDOFF.md.
-   Several upstream items may already be covered by earlier ports —
-   verify before reimplementing; a regression test alone is fine.
+   Anything filed after #744's last known sweep (PORTS.md rows above
+   #852 are already adjudicated): triage each — verify applicability to
+   the fork, port if relevant (source + tests, adapt to fork idioms),
+   or record SKIP/adjudication in PORTS.md + HANDOFF.md. Ported items
+   that upstream later replaced are fair to revisit if upstream fixed a
+   regression in them. Commit + push per item.
 
 3. Check open PRs across all three fork repos
    (`gh pr list -R Dvorinka/desloppify`, `-R Dvorinka/cloudreve`,
@@ -66,14 +56,16 @@ REMAINING WORK, in order:
      desloppify/tests -q` — ignore ONLY the two
      test_do_run_batches_dry_run_generates_packet_and_prompts env
      failures. Any other failure must be fixed before finishing.
+   - `/home/tdvorak/.local/bin/ruff check .` on changed files only
+     (pre-existing noise: parser_groups.py, show/cmd.py,
+     orchestrator_codex_pipeline.py I001/E402).
    - Update PORTS.md + HANDOFF.md with everything done this session.
    - Append a durable summary line to ~/agent-memory/MEMORY.md,
      commit and push the memory repo.
-   - Leave the desloppify tree clean (git status empty).
+   - Leave the desloppify tree clean and pushed (git status empty).
 
 CONVENTIONS: Conventional Commits + `Authored By: TDvorak
 <info@tdvorak.dev>` trailer on every commit. Push after each resolved
-item. Pre-existing ruff noise to leave: parser_groups.py, show/cmd.py,
-orchestrator_codex_pipeline.py (I001/E402). Smallest correct diff;
-reuse helpers; no speculative abstraction. J.A.R.V.I.S. style: concise,
-dry, no emojis. Link any PR you create/take over via link_pull_request.
+item. Smallest correct diff; reuse helpers; no speculative abstraction.
+J.A.R.V.I.S. style: concise, dry, no emojis. Link any PR you
+create/take over via link_pull_request.
