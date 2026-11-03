@@ -572,6 +572,20 @@ Committed on maint/continuation:
 - Both fixes: issue-repro verified, suites
   tests/lang/{typescript,python} + tests/detectors green (1085 passed).
   unused_enums.py I001 ruff noise is pre-existing (verified via git stash).
+- PR #1 (summary, stays open) had a permanently-red `diff-review` check:
+  the example consumer workflow matched workflows/*.yml and self-ran on
+  every fork PR, calling Dvorinka/desloppify@main — no action.yml there
+  until #1 merges. Renamed to desloppify-pr-review.yml.example so GitHub
+  ignores it (bc67f847). PR body refreshed with the drained-queue status.
+- Regression-suite repair (7839c6f7): four suites failing at baseline
+  717c6e32 (pre-dating this sweep — session XIV cut off before running
+  the full suite). Canonical-skip-freshness runtime.lang fixture lacked
+  semantic_corrections (post-#694 contract, 14 tests); organize
+  undecided-reflect gate now raises CommandError(1) per #754; codex
+  pipeline helper fake adapted to the #823 (run_dir, args) signature;
+  boilerplate None fixture gained detector_coverage and pins the #821
+  reduced-coverage record. Suite: 6453 passed; only the two known
+  dry-run env failures remain. Ruff clean on all changed test files.
 
 ## Then: Dvorinka/cloudreve — DONE (2026-11-02)
 - #412 closed: vulns superseded — backend 4.23.7, Go 1.26.5
