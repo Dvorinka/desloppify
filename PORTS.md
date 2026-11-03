@@ -231,3 +231,6 @@ against fork HEAD `3a7735d` (v1.0). Verdicts:
 | #838 props detector counts only member lines | `60c61251` |
 | #811 sort_no_comparator skips string-keyed Object sources | `d1205d5c` |
 | #927 move preserves explicit TS extensions / index forms | `e4fd165a` |
+| #833 route explicit state to sibling plan | DONE | nested-state root walk ported; plan_file plumbing was already present |
+| #834 actual TS project configs for unused | DONE | adopted wholesale — supersedes fork's synthetic tsconfig |
+| #939 shell-meta -lc -> -c | DONE | already covered in fork |
