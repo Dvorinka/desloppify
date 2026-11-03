@@ -537,6 +537,17 @@ Committed on maint/continuation:
 - Desloppify queue: DONE. Next: Dvorinka/cloudreve (#412 #369; PRs
   #414 #413), then Nothing_Modes.
 
+## Session 2026-11-03 (XV) — #744 mining COMPLETE
+- All five remaining pending candidates landed (previous session, cut off
+  before recording): py #673 open dict-copy keysets → a8d8d094; py #685
+  reflect display names → 83e3a548; C# #682 Razor/Blazor dep graph joins
+  (incl. 49517715 style fix) → 90301f66; TS #697 React
+  Router/Remix route-module recognition → b877f61a; cxx #732 tested
+  headers → unique same-stem sources → c9e95e0b.
+- Nothing left under the #744 meta-issue. PORTS.md row #744 updated to
+  MINING COMPLETE with the five hashes. Next: fresh upstream sweep
+  (issues post-#852 adjudication), then the three-repo open-PR check.
+
 ## Then: Dvorinka/cloudreve — DONE (2026-11-02)
 - #412 closed: vulns superseded — backend 4.23.7, Go 1.26.5
   (go-version-file), alpine:latest runtime base.
