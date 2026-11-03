@@ -1,8 +1,8 @@
 name: Tweet Release
 
-on:
-  release:
-    types: [published]
+on:  # release auto-tweet needs upstream-owned secrets; manual only
+
+  workflow_dispatch:
 
 jobs:
   tweet:

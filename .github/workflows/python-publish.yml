@@ -1,12 +1,11 @@
-# Publish to PyPI on every push to main.
-# The "Check if version exists" step makes this idempotent — if the version
-# is already on PyPI, the job skips the publish cleanly.
-
+# Publish to PyPI — manual dispatch only.
+# The package name on PyPI belongs to upstream (peteromalley); trusted
+# publishing is bound to their repo, so an automated push-triggered publish
+# from this fork can never succeed. Run by hand only if you register your
+# own trusted-publisher binding.
 name: Publish to PyPI
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 permissions:

@@ -1,6 +1,6 @@
 # Changelog
 
-## [1.0.1] — community fork, `maint/continuation` (unreleased)
+## [1.0.1] — community fork release, 2026-11-03
 
 Community continuation of `peteromallet/desloppify` at v1.0 (`3a7735d`).
 Maintained at [Dvorinka/desloppify](https://github.com/Dvorinka/desloppify).
