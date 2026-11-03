@@ -597,7 +597,10 @@ Committed on maint/continuation:
   tests-full only. Final CI on bd66ec50: lint/typecheck/arch/
   ci-contracts/package-smoke all pass; tests-core + tests-full report
   7718 passed with ONLY the two known dry-run env failures (run-level
-  failure is that sanctioned env class).
+  failure is that sanctioned env class). Re-confirmed stable on HEAD
+  after the docs commits (ef4b387d, a5c19ffd changelog backlog for
+  sessions IX-XV). Fork repos: issues disabled on desloppify; cloudreve
+  #369 stays the living upstream-watch tracker; Nothing_Modes clean.
 
 ## Then: Dvorinka/cloudreve — DONE (2026-11-02)
 - #412 closed: vulns superseded — backend 4.23.7, Go 1.26.5
