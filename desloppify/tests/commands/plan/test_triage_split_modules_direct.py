@@ -1877,7 +1877,7 @@ def test_run_codex_pipeline_raises_on_stage_failure(monkeypatch, tmp_path: Path)
     monkeypatch.setattr(
         orchestrator_pipeline_mod,
         "_write_desloppify_cli_helper",
-        lambda run_dir: run_dir / "run_desloppify.sh",
+        lambda run_dir, _args: run_dir / "run_desloppify.sh",
     )
     monkeypatch.setattr(
         orchestrator_pipeline_mod,

@@ -48,11 +48,14 @@ def test_phase_dupes_filters_non_production_functions(monkeypatch) -> None:
 
 
 def test_phase_boilerplate_duplication_handles_none_and_entries(monkeypatch) -> None:
-    lang = SimpleNamespace(zone_map=None)
+    lang = SimpleNamespace(zone_map=None, detector_coverage={})
     monkeypatch.setattr(review_mod, "detect_with_jscpd", lambda _path: None)
     issues, potentials = review_mod.phase_boilerplate_duplication(Path("."), lang)
     assert issues == []
     assert potentials == {}
+    # jscpd failure records reduced coverage instead of a silent full pass (#821).
+    recorded = lang.detector_coverage.get("boilerplate_duplication")
+    assert recorded["status"] == "reduced"
 
     entries = [
         {

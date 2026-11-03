@@ -59,7 +59,7 @@ def run_app_merge(monkeypatch, tmp_path):
         state=state,
         path=tmp_path,
         config={},
-        lang=SimpleNamespace(name="python", zone_map=None),
+        lang=SimpleNamespace(name="python", zone_map=None, semantic_corrections=None),
         lang_label="Python",
         profile="full",
         effective_include_slow=True,

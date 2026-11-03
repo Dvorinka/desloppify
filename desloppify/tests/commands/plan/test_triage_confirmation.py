@@ -4,10 +4,13 @@ from __future__ import annotations
 
 import argparse
 
+import pytest
+
 import desloppify.app.commands.plan.triage.command as triage_mod
 from desloppify.app.commands.plan.triage.services import TriageServices
-from desloppify.engine._plan.schema import empty_plan
+from desloppify.base.exception_sets import CommandError
 from desloppify.engine._plan.constants import TRIAGE_STAGE_IDS
+from desloppify.engine._plan.schema import empty_plan
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -252,7 +255,7 @@ class TestConfirmReflect:
 
 class TestOrganizeGate:
     def test_organize_blocked_without_confirmed_reflect(self, monkeypatch, capsys):
-        """Organize is blocked if reflect exists but is not confirmed."""
+        """Organize refusal (unconfirmed reflect) is a CommandError exit 1 (#754)."""
         plan = _plan_with_stages("observe", "reflect")
         # Confirm observe but not reflect
         plan["epic_triage_meta"]["triage_stages"]["observe"]["confirmed_at"] = "2025-06-01T00:01:00Z"
@@ -262,7 +265,9 @@ class TestOrganizeGate:
 
         report = "A sufficiently long organize report about my clusters r1 r2 and their priorities and ordering details for this plan"
         args = _fake_args(stage="organize", report=report)
-        triage_mod.cmd_plan_triage(args)
+        with pytest.raises(CommandError) as exc_info:
+            triage_mod.cmd_plan_triage(args)
+        assert exc_info.value.exit_code == 1
         out = capsys.readouterr().out
         assert "not confirmed" in out.lower()
 
