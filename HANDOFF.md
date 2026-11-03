@@ -632,3 +632,18 @@ Committed on maint/continuation:
    acf82cc — convention: merge commit + chore(release) bump touching
    build.gradle.kts/CHANGELOG.md/fastlane changelog + gh release
    --generate-notes. FULL SWEEP COMPLETE.
+
+## Session XV — #744 mining COMPLETE + upstream sweep (2026-11-03)
+- Ported and pushed: #673 (open dict-copy keysets), #685 (reflect
+  display names), #682 (razor/blazor dep graph, 76 csharp tests),
+  #697 (react-router/remix entry points), #732 (cxx static coverage
+  mapping, 157 cxx tests).
+- Upstream sweep: #833 ported (nested .desloppify/<lang>/ state root
+  walk + test_explicit_state_plan.py), #834 adopted wholesale (per-file
+  tsconfig discovery for unused checks; fork's synthetic tsconfig
+  superseded), #939 already covered (-c in tool_runner).
+- No other upstream items missing from PORTS.md. PR #1 (community
+  continuation) remains the living branch PR — left open by design.
+- Full suite: 6459 passed; only the 2 documented env failures
+  (test_do_run_batches_dry_run_generates_packet_and_prompts x2).
+- #744 meta-issue fully mined. No remaining port candidates.
