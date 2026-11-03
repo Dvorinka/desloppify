@@ -60,9 +60,11 @@ integration-roslyn: install-ci-tools
 	pytest -q desloppify/tests/lang/csharp/test_csharp_deps.py -k "roslyn"
 
 tests: install-ci-tools
+	python -m pip install -e ".[treesitter]" >/dev/null
 	pytest -q $(PYTEST_XML_FLAG)
 
 tests-full: install-full-tools
+	python -m pip install -e ".[treesitter]" >/dev/null
 	pytest -q $(PYTEST_XML_FLAG)
 
 package-smoke: install-ci-tools
