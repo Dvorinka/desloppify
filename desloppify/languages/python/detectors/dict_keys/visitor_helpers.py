@@ -54,6 +54,80 @@ def mark_assignment_escape(visitor, targets: list[ast.expr], value: ast.expr) ->
             return
 
 
+def dict_source_provenance(
+    visitor,
+    value: ast.expr,
+) -> tuple[list[str], bool] | None:
+    """Return known keys and whether a dict expression may contain other keys."""
+
+    source_name = _get_name(value)
+    if source_name:
+        tracked = visitor._get_tracked(source_name)
+        if tracked is None:
+            return None
+        return list(tracked.writes), tracked.keyset_is_open
+
+    if isinstance(value, ast.Dict):
+        known_keys: list[str] = []
+        keyset_is_open = False
+        for key_node, value_node in zip(value.keys, value.values, strict=True):
+            if key_node is None:
+                provenance = dict_source_provenance(visitor, value_node)
+                if provenance is None:
+                    keyset_is_open = True
+                else:
+                    source_keys, source_is_open = provenance
+                    known_keys.extend(source_keys)
+                    keyset_is_open |= source_is_open
+                continue
+            key = _get_str_key(key_node)
+            if key is None:
+                keyset_is_open = True
+            else:
+                known_keys.append(key)
+        return known_keys, keyset_is_open
+
+    if not isinstance(value, ast.Call):
+        return None
+
+    if isinstance(value.func, ast.Name) and value.func.id == "dict":
+        known_keys = []
+        keyset_is_open = False
+        for argument in value.args:
+            provenance = dict_source_provenance(visitor, argument)
+            if provenance is None:
+                keyset_is_open = True
+            else:
+                source_keys, source_is_open = provenance
+                known_keys.extend(source_keys)
+                keyset_is_open |= source_is_open
+        for keyword in value.keywords:
+            if keyword.arg is not None:
+                known_keys.append(keyword.arg)
+                continue
+            provenance = dict_source_provenance(visitor, keyword.value)
+            if provenance is None:
+                keyset_is_open = True
+            else:
+                source_keys, source_is_open = provenance
+                known_keys.extend(source_keys)
+                keyset_is_open |= source_is_open
+        return known_keys, keyset_is_open
+
+    if (
+        isinstance(value.func, ast.Attribute)
+        and value.func.attr == "copy"
+        and not value.args
+        and not value.keywords
+    ):
+        source_name = _get_name(value.func.value)
+        if source_name:
+            tracked = visitor._get_tracked(source_name)
+            if tracked is not None:
+                return list(tracked.writes), tracked.keyset_is_open
+    return None
+
+
 def record_call_interactions(visitor, node: ast.Call) -> None:
     """Update tracked dict read/write metadata from a call expression."""
     if isinstance(node.func, ast.Attribute):
@@ -77,24 +151,42 @@ def record_call_interactions(visitor, node: ast.Call) -> None:
                             tracked.writes[key].append(node.lineno)
                         else:
                             tracked.has_dynamic_key = True
+                            tracked.keyset_is_open = True
                 elif method == "update":
-                    if node.args and isinstance(node.args[0], ast.Dict):
-                        for key_node in node.args[0].keys:
-                            key = _get_str_key(key_node) if key_node else None
-                            if key:
+                    if node.args:
+                        provenance = dict_source_provenance(visitor, node.args[0])
+                        if provenance is None:
+                            tracked.keyset_is_open = True
+                        else:
+                            source_keys, source_is_open = provenance
+                            for key in source_keys:
                                 tracked.writes[key].append(node.lineno)
-                            elif key_node is None:
-                                tracked.has_dynamic_key = True
+                            tracked.keyset_is_open |= source_is_open
                     for kw in node.keywords:
                         if kw.arg:
                             tracked.writes[kw.arg].append(node.lineno)
                         else:
-                            tracked.has_dynamic_key = True
+                            provenance = dict_source_provenance(visitor, kw.value)
+                            if provenance is None:
+                                tracked.keyset_is_open = True
+                            else:
+                                source_keys, source_is_open = provenance
+                                for key in source_keys:
+                                    tracked.writes[key].append(node.lineno)
+                                tracked.keyset_is_open |= source_is_open
                 elif method in _BULK_READ_METHODS:
                     tracked.bulk_read = True
 
-    for arg in node.args:
-        mark_returned_or_passed(visitor, arg)
+    # Copying constructors (dict(...) / d.copy()) do not escape the source
+    # dict — they only read its keyset.
+    is_copying_constructor = (
+        isinstance(node.func, ast.Name) and node.func.id == "dict"
+    ) or (
+        isinstance(node.func, ast.Attribute) and node.func.attr == "copy"
+    )
+    if not is_copying_constructor:
+        for arg in node.args:
+            mark_returned_or_passed(visitor, arg)
     for kw in node.keywords:
         if kw.arg is None:
             name = _get_name(kw.value)
@@ -115,8 +207,21 @@ def analyze_scope_issues(
 ) -> list[dict]:
     """Analyze a completed scope and return dict-key issues."""
     issues: list[dict] = []
+    seen_tracked: set[int] = set()
     for tracked in scope.values():
+        tracked_identity = id(tracked)
+        if tracked_identity in seen_tracked:
+            continue
+        seen_tracked.add(tracked_identity)
         if not tracked.locally_created:
+            continue
+        # self.x dicts are analyzed once at class scope — sibling methods
+        # visited later may consume them (#801).
+        if (
+            not is_class
+            and tracked.name.startswith("self.")
+            and getattr(visitor, "_in_class", False)
+        ):
             continue
 
         suppress_dead = (
@@ -157,8 +262,16 @@ def analyze_scope_issues(
                     }
                 )
 
-        phantom_keys = read_keys - written_keys
-        for key in sorted(phantom_keys):
+        phantom_keys = set() if tracked.keyset_is_open else read_keys - written_keys
+        # A dict that escaped through a call boundary or was rebound to
+        # unseen content may hold keys we never saw written (#801, #846).
+        suppress_phantom = (
+            tracked.returned_or_passed
+            or tracked.provenance_unknown
+            or tracked.has_dynamic_key
+            or tracked.keyset_is_open
+        )
+        for key in sorted(phantom_keys) if not suppress_phantom else ():
             line = tracked.reads[key][0]
             issues.append(
                 {
@@ -219,6 +332,14 @@ def analyze_scope_issues(
                 first, second = write_lines[idx], write_lines[idx + 1]
                 has_read_between = any(first < read <= second for read in read_lines)
                 if not has_read_between:
+                    # Conditional/branch writes aren't sequential overwrites —
+                    # defaults overridden on one path are intentional (#801,
+                    # #846). Only two unconditional writes prove a dead store.
+                    if (
+                        first in tracked.conditional_writes
+                        or second in tracked.conditional_writes
+                    ):
+                        continue
                     issues.append(
                         {
                             "file": visitor.filepath,

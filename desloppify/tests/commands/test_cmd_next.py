@@ -45,8 +45,8 @@ def _patch_common(monkeypatch, *, state, config=None):
     )
     monkeypatch.setattr(narrative_mod, "compute_narrative", lambda *a, **k: {})
     monkeypatch.setattr(next_mod, "resolve_lang", lambda _args: None)
-    monkeypatch.setattr(plan_mod, "load_plan", lambda: {})
-    monkeypatch.setattr(next_mod, "load_plan", lambda: {})
+    monkeypatch.setattr(plan_mod, "load_plan", lambda *a, **k: {})
+    monkeypatch.setattr(next_mod, "load_plan", lambda *a, **k: {})
 
 
 class TestNextModuleSanity:

@@ -82,7 +82,7 @@ def resolve_python_import(
     scan_root_path = Path(scan_root) if not isinstance(scan_root, Path) else scan_root
     if module_path.startswith("."):
         return resolve_relative_import(module_path, source_dir)
-    return resolve_absolute_import(module_path, scan_root_path)
+    return resolve_absolute_import(module_path, scan_root_path, source_dir)
 
 
 def resolve_relative_import(module_path: str, source_dir: Path) -> str | None:
@@ -106,20 +106,35 @@ def resolve_relative_import(module_path: str, source_dir: Path) -> str | None:
     return try_resolve_path(target_base)
 
 
-def resolve_absolute_import(module_path: str, scan_root: Path) -> str | None:
-    """Resolve an absolute import within scan root first, then project root."""
-    parts = module_path.split(".")
-    target_base = scan_root.resolve()
-    for part in parts:
-        target_base = target_base / part
-    resolved = try_resolve_path(target_base)
-    if resolved:
-        return resolved
+def resolve_absolute_import(
+    module_path: str,
+    scan_root: Path,
+    source_dir: Path | None = None,
+) -> str | None:
+    """Resolve an absolute import against every plausible source root.
 
-    target_base = get_project_root()
-    for part in parts:
-        target_base = target_base / part
-    return try_resolve_path(target_base)
+    ``import foo`` is not only anchored at the scan root: a script's own
+    directory is on ``sys.path`` (nested packages under a tools/ directory),
+    and src-layout projects import through ``<root>/src``. Trying each root
+    in order keeps those edges instead of reporting live modules as dead.
+    """
+    parts = module_path.split(".")
+    roots: list[Path] = []
+    for candidate in (source_dir, scan_root, get_project_root()):
+        if candidate is None:
+            continue
+        candidate = Path(candidate).resolve()
+        for root in (candidate, candidate / "src"):
+            if root not in roots:
+                roots.append(root)
+    for root in roots:
+        target_base = root
+        for part in parts:
+            target_base = target_base / part
+        resolved = try_resolve_path(target_base)
+        if resolved:
+            return resolved
+    return None
 
 
 def try_resolve_path(target_base: Path) -> str | None:

@@ -6,6 +6,22 @@ import logging
 import os
 
 from desloppify.base.discovery.paths import get_project_root
+from desloppify.engine.detectors.coverage.mapping_analysis import (
+    _build_prod_by_module,
+    transitive_coverage,
+)
+from desloppify.engine.detectors.coverage.mapping_analysis import (
+    analyze_test_quality as _analyze_test_quality,
+)
+from desloppify.engine.detectors.coverage.mapping_analysis import (
+    build_production_test_index as _build_production_test_index,
+)
+from desloppify.engine.detectors.coverage.mapping_analysis import (
+    build_test_import_index as _build_test_import_index,
+)
+from desloppify.engine.detectors.coverage.mapping_analysis import (
+    get_test_files_for_prod as _get_test_files_for_prod,
+)
 from desloppify.engine.detectors.coverage.mapping_imports import (
     _infer_lang_name,
     _load_lang_test_coverage_module,
@@ -13,13 +29,6 @@ from desloppify.engine.detectors.coverage.mapping_imports import (
     _resolve_barrel_reexports,
 )
 from desloppify.engine.detectors.test_coverage.io import read_coverage_file
-from desloppify.engine.detectors.coverage.mapping_analysis import (
-    _build_prod_by_module,
-    analyze_test_quality as _analyze_test_quality,
-    build_test_import_index as _build_test_import_index,
-    get_test_files_for_prod as _get_test_files_for_prod,
-    transitive_coverage,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -157,6 +166,24 @@ def _map_test_to_source(
     return None
 
 
+def _map_test_to_sources(
+    test_path: str,
+    production_set: set[str],
+    lang_name: str,
+) -> set[str]:
+    """Match a test file to every production file it covers by language scope.
+
+    Optional plural hook for languages whose test scope is wider than one
+    name-paired file (Go tests cover their whole package). Returns an empty
+    set when the language module does not define it.
+    """
+    mod = _load_lang_test_coverage_module(lang_name)
+    mapper = getattr(mod, "map_test_to_sources", None)
+    if callable(mapper):
+        return mapper(test_path, production_set)
+    return set()
+
+
 def naming_based_mapping(
     test_files: set[str],
     production_files: set[str],
@@ -171,6 +198,8 @@ def naming_based_mapping(
         prod_by_basename.setdefault(bn, []).append(p)
 
     for tf in test_files:
+        tested |= _map_test_to_sources(tf, production_files, lang_name)
+
         matched = _map_test_to_source(tf, production_files, lang_name)
         if matched:
             tested.add(matched)
@@ -183,6 +212,20 @@ def naming_based_mapping(
                 tested.add(p)
 
     return tested
+
+
+def promote_owner_coverage(
+    directly_tested: set[str],
+    transitively_tested: set[str],
+    production_files: set[str],
+    lang_name: str,
+) -> set[str]:
+    """Promote language-specific child modules covered through an owner boundary."""
+    mod = _load_lang_test_coverage_module(lang_name)
+    promoter = getattr(mod, "promote_owner_covered_files", None)
+    if not callable(promoter):
+        return set()
+    return set(promoter(directly_tested, transitively_tested, production_files))
 
 
 def _strip_test_markers(basename: str, lang_name: str) -> str | None:
@@ -224,6 +267,7 @@ def get_test_files_for_prod(
         parsed_imports_by_test,
         parse_test_imports_fn=_parse_test_imports,
         map_test_to_source_fn=_map_test_to_source,
+        map_test_to_sources_fn=_map_test_to_sources,
         project_root=str(get_project_root()),
     )
 
@@ -243,12 +287,32 @@ def build_test_import_index(
     )
 
 
+def build_production_test_index(
+    test_files: set[str],
+    production_files: set[str],
+    graph: dict,
+    lang_name: str,
+    parsed_imports_by_test: dict[str, set[str]],
+) -> dict[str, list[str]]:
+    """Index direct tests by production file without quadratic resolution."""
+    return _build_production_test_index(
+        test_files,
+        production_files,
+        graph,
+        lang_name,
+        parsed_imports_by_test,
+        map_test_to_source_fn=_map_test_to_source,
+    )
+
+
 __all__ = [
     "analyze_test_quality",
+    "build_production_test_index",
     "build_test_import_index",
     "get_test_files_for_prod",
     "import_based_mapping",
     "naming_based_mapping",
+    "promote_owner_coverage",
     "transitive_coverage",
     "_build_prod_module_index",
     "_map_test_to_source",

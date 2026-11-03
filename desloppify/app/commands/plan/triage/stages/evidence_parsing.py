@@ -102,9 +102,50 @@ def _build_short_map(valid_ids: set[str]) -> dict[str, str]:
     return short_map
 
 
-def _is_valid_hash(raw_hash: str, short_map: dict[str, str], valid_ids: set[str]) -> bool:
+def _is_valid_hash(
+    raw_hash: str,
+    short_map: dict[str, str],
+    valid_ids: set[str],
+    hash_to_id: dict[str, str] | None = None,
+) -> bool:
     """Check if a hash is known in either the short map or valid IDs."""
-    return raw_hash in short_map or raw_hash in valid_ids
+    return (
+        raw_hash in short_map
+        or raw_hash in valid_ids
+        or (hash_to_id is not None and raw_hash in hash_to_id)
+    )
+
+
+def summary_hash_index(issues: dict) -> dict[str, str]:
+    """Map ``detail.summary_hash`` -> issue_id, unambiguous hashes only.
+
+    Holistic review ids (``review::.::holistic::<dim>::<slug>``) carry no
+    hex suffix, so agents cite the only 8-hex token on the issue —
+    ``detail.summary_hash`` — and every citation/verdict parse used to
+    miss it (#845).
+    """
+    index: dict[str, str] = {}
+    ambiguous: set[str] = set()
+    for fid, issue in (issues or {}).items():
+        if not isinstance(issue, dict):
+            continue
+        detail = issue.get("detail")
+        if not isinstance(detail, dict):
+            continue
+        raw = detail.get("summary_hash")
+        if not isinstance(raw, str):
+            continue
+        key = raw.strip().lower()
+        if not re.fullmatch(r"[0-9a-f]{6,}", key):
+            continue
+        existing = index.get(key)
+        if existing is None:
+            index[key] = fid
+        elif existing != fid:
+            ambiguous.add(key)
+    for key in ambiguous:
+        index.pop(key, None)
+    return index
 
 
 # --- YAML-like template parser ---
@@ -135,10 +176,13 @@ def _flush_yaml_entry(
     current: dict,
     short_map: dict[str, str],
     valid_ids: set[str],
+    hash_to_id: dict[str, str] | None = None,
 ) -> ObserveAssessment | None:
     """Convert a collected YAML-like entry dict into an ObserveAssessment, or None if invalid."""
     raw_hash = current.get("hash", "").lower()
-    if not raw_hash or not _is_valid_hash(raw_hash, short_map, valid_ids):
+    if not raw_hash or not _is_valid_hash(
+        raw_hash, short_map, valid_ids, hash_to_id
+    ):
         return None
     raw_verdict = current.get("verdict", "")
     verdict = _normalise_verdict(raw_verdict)
@@ -157,6 +201,7 @@ def _parse_yaml_template(
     report: str,
     short_map: dict[str, str],
     valid_ids: set[str],
+    hash_to_id: dict[str, str] | None = None,
 ) -> list[ObserveAssessment]:
     """Parse YAML-like template entries from report text."""
     entries: list[ObserveAssessment] = []
@@ -167,7 +212,7 @@ def _parse_yaml_template(
         if m_hash:
             # Flush previous entry
             if current is not None:
-                entry = _flush_yaml_entry(current, short_map, valid_ids)
+                entry = _flush_yaml_entry(current, short_map, valid_ids, hash_to_id)
                 if entry:
                     entries.append(entry)
             current = {"hash": m_hash.group(1).lower()}
@@ -198,25 +243,29 @@ def _parse_yaml_template(
 
     # Flush final entry
     if current is not None:
-        entry = _flush_yaml_entry(current, short_map, valid_ids)
+        entry = _flush_yaml_entry(current, short_map, valid_ids, hash_to_id)
         if entry:
             entries.append(entry)
 
     return entries
 
 
-def parse_observe_evidence(report: str, valid_ids: set[str]) -> ObserveEvidence:
+def parse_observe_evidence(
+    report: str,
+    valid_ids: set[str],
+    hash_to_id: dict[str, str] | None = None,
+) -> ObserveEvidence:
     """Parse assessment entries from an observe-stage report.
 
     Supports the YAML-like template format:
     hash/verdict/verdict_reasoning/files_read/recommendation
     """
     short_map = _build_short_map(valid_ids)
-    entries = _parse_yaml_template(report, short_map, valid_ids)
+    entries = _parse_yaml_template(report, short_map, valid_ids, hash_to_id)
 
     # Count hashes that appear in report but weren't parsed as entries
     all_hashes_in_report = set(re.findall(r"[0-9a-f]{8,}", report.lower()))
-    valid_short_hashes = set(short_map.keys())
+    valid_short_hashes = set(short_map.keys()) | set(hash_to_id or {})
     cited_hashes = all_hashes_in_report & valid_short_hashes
     parsed_hashes = {e.issue_hash for e in entries}
     unparsed = len(cited_hashes - parsed_hashes)
@@ -577,7 +626,11 @@ def format_evidence_failures(
     return "\n\n".join(parts)
 
 
-def resolve_short_hash_to_full_id(short_hash: str, valid_ids: set[str]) -> str | None:
+def resolve_short_hash_to_full_id(
+    short_hash: str,
+    valid_ids: set[str],
+    hash_to_id: dict[str, str] | None = None,
+) -> str | None:
     """Resolve a short hash to a full issue ID using collision-aware resolution.
 
     Uses ``_build_id_resolution_maps`` from reflect_accounting to handle
@@ -594,6 +647,8 @@ def resolve_short_hash_to_full_id(short_hash: str, valid_ids: set[str]) -> str |
     resolved = maps.short_hex_map.get(short_hash)
     if resolved:
         return resolved
+    if hash_to_id:
+        return hash_to_id.get(short_hash)
     return None
 
 
@@ -609,6 +664,7 @@ __all__ = [
     "parse_value_check_decision_ledger",
     "parse_observe_evidence",
     "resolve_short_hash_to_full_id",
+    "summary_hash_index",
     "validate_observe_evidence",
     "validate_reflect_skip_evidence",
     "validate_report_has_file_paths",

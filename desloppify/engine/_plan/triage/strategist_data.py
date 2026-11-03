@@ -7,8 +7,11 @@ from dataclasses import asdict, dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+from desloppify.base.subjective_dimension_catalog import DISPLAY_NAMES
+from desloppify.engine._plan.constants import is_marker_id
 from desloppify.engine._plan.schema import PlanModel
 from desloppify.engine._plan.triage.core import detect_recurring_patterns
+from desloppify.engine._scoring.results.impact import get_dimension_for_detector
 from desloppify.engine._state.issue_semantics import is_review_work_item
 from desloppify.engine._state.schema import StateModel
 
@@ -65,9 +68,12 @@ class CompletedClusterSummary:
 
 @dataclass(frozen=True)
 class ExecutionPatterns:
-    total_resolved: int
-    total_skipped: int
-    total_done: int
+    resolved_issues: int
+    resolved_operations: int
+    done_issues: int
+    done_operations: int
+    skipped_issues: int
+    skipped_operations: int
     skip_rate: float
     avg_cluster_size: float
 
@@ -165,19 +171,22 @@ def _trend_from_delta(delta: float, *, stagnant_threshold: float = 0.5) -> str:
 
 
 def _dimension_name_for_issue(issue: dict[str, Any]) -> str:
-    """Extract dimension from an issue.
+    """Use the same dimension labels as the score trajectories.
 
     Checks both ``detail.dimension`` (review issues) and
     ``detail.dimension_name`` (synthetic/work-queue items) because this
-    function is called on all work_items, not just review issues.
+    function is called on all work_items, not just review issues. Mechanical
+    findings usually carry no dimension detail; use their scoring policy.
     """
     detail = issue.get("detail", {})
     if isinstance(detail, dict):
         for key in ("dimension", "dimension_name"):
             value = detail.get(key)
             if isinstance(value, str) and value.strip():
-                return value.strip()
-    return "unknown"
+                name = value.strip()
+                return DISPLAY_NAMES.get(name, name)
+    dimension = get_dimension_for_detector(str(issue.get("detector", "")))
+    return dimension.name if dimension is not None else "unknown"
 
 
 def _open_review_and_resolved_review_issues(
@@ -280,12 +289,34 @@ def dimension_trajectories(
             if strict is not None:
                 historical[str(name)].append(round(strict, 2))
 
+    # "Recent" means inside the same window as the score trajectory (#883):
+    # resolutions older than the earliest windowed history entry are
+    # lifetime activity, not recent investment. Untimestamped resolutions
+    # cannot be shown to be recent and are not counted when the window is
+    # bounded. With no windowed timestamp at all the window is unboundable
+    # and every retained resolution counts (legacy behavior).
+    window_start = min(
+        (
+            str(entry.get("timestamp", "")).strip()
+            for entry in recent
+            if str(entry.get("timestamp", "")).strip()
+        ),
+        default="",
+    )
     investment_by_dim: Counter[str] = Counter()
     for issue in work_items.values():
         if not isinstance(issue, dict):
             continue
-        if issue.get("resolved_at") or str(issue.get("status", "")) in _ACTIVELY_RESOLVED_STATUSES:
-            investment_by_dim[_dimension_name_for_issue(issue)] += 1
+        if not (
+            issue.get("resolved_at")
+            or str(issue.get("status", "")) in _ACTIVELY_RESOLVED_STATUSES
+        ):
+            continue
+        if window_start:
+            resolved_at = str(issue.get("resolved_at") or "").strip()
+            if not resolved_at or resolved_at < window_start:
+                continue
+        investment_by_dim[_dimension_name_for_issue(issue)] += 1
 
     names = set(historical) | {
         str(name)
@@ -449,13 +480,48 @@ def completed_cluster_summary_from_plan(
                 completed_at=completed_at,
             )
         )
+    if summaries:
+        return summaries[-10:]
+
+    # Fallback: live clusters carry execution_status="done" without ever
+    # being copied into plan["completed_clusters"] (#900).
+    clusters = plan.get("clusters", {})
+    if not isinstance(clusters, dict):
+        return []
+    from desloppify.engine._plan.cluster_semantics import EXECUTION_STATUS_DONE
+
+    for name, cluster in clusters.items():
+        if not isinstance(cluster, dict):
+            continue
+        if str(cluster.get("execution_status", "")) != EXECUTION_STATUS_DONE:
+            continue
+        issue_ids = cluster.get("issue_ids", [])
+        summaries.append(
+            CompletedClusterSummary(
+                name=str(name).strip() or "?",
+                thesis=str(cluster.get("thesis") or cluster.get("description") or "").strip(),
+                issue_count=len(issue_ids) if isinstance(issue_ids, list) else 0,
+                completed_at=str(cluster.get("completed_at", "")),
+            )
+        )
     return summaries[-10:]
 
 
 def execution_pattern_analysis(
     execution_log: list[dict[str, Any]],
+    plan: dict[str, Any] | None = None,
     window_days: int = 30,
 ) -> ExecutionPatterns:
+    """Summarize the execution log, keeping operation and issue counts apart.
+
+    ``issue_ids`` on user-facing entries stores the *patterns* the user
+    typed — cluster names and globs — not resolved ids, and marker ids
+    (triage/workflow/subjective) name phases rather than work. Counting
+    raw list lengths therefore mixed operations, cluster fronts, and
+    placeholders into one "productivity" number (#900). Each action now
+    reports ``*_operations`` (log entries) and ``*_issues`` (distinct real
+    issue ids, cluster names expanded via the plan).
+    """
     cutoff = datetime.now(UTC) - timedelta(days=window_days)
     relevant: list[dict[str, Any]] = []
     for entry in execution_log:
@@ -465,33 +531,55 @@ def execution_pattern_analysis(
         if timestamp is not None and timestamp < cutoff:
             continue
         relevant.append(entry)
-    total_resolved = sum(
-        len(entry.get("issue_ids", [])) if isinstance(entry.get("issue_ids"), list) else 0
-        for entry in relevant
-        if entry.get("action") == "resolve"
-    )
-    total_done = sum(
-        len(entry.get("issue_ids", [])) if isinstance(entry.get("issue_ids"), list) else 0
-        for entry in relevant
-        if entry.get("action") == "done"
-    )
-    total_skipped = sum(
-        len(entry.get("issue_ids", [])) if isinstance(entry.get("issue_ids"), list) else 0
-        for entry in relevant
-        if entry.get("action") == "skip"
-    )
+
+    cluster_members: dict[str, set[str]] = {}
+    if isinstance(plan, dict):
+        for name, cluster in plan.get("clusters", {}).items():
+            if isinstance(cluster, dict) and isinstance(cluster.get("issue_ids"), list):
+                cluster_members[str(name)] = {
+                    str(fid) for fid in cluster["issue_ids"] if isinstance(fid, str)
+                }
+
+    def _issue_ids(entry: dict[str, Any]) -> set[str]:
+        ids: set[str] = set()
+        raw = entry.get("issue_ids")
+        if not isinstance(raw, list):
+            return ids
+        for value in raw:
+            if not isinstance(value, str) or not value:
+                continue
+            members = cluster_members.get(value)
+            if members is not None:
+                ids |= members
+                continue
+            if is_marker_id(value) or any(ch in value for ch in "*?[]"):
+                continue
+            ids.add(value)
+        return ids
+
+    def _totals(action: str) -> tuple[int, int]:
+        entries = [e for e in relevant if e.get("action") == action]
+        return len(entries), len({fid for e in entries for fid in _issue_ids(e)})
+
+    resolved_operations, resolved_issues = _totals("resolve")
+    done_operations, done_issues = _totals("done")
+    skipped_operations, skipped_issues = _totals("skip")
+
     cluster_sizes = [
         len(entry.get("issue_ids", []))
         for entry in relevant
         if entry.get("action") == "cluster_done" and isinstance(entry.get("issue_ids"), list)
     ]
-    denominator = total_resolved + total_done + total_skipped
-    skip_rate = round(total_skipped / denominator, 3) if denominator else 0.0
+    denominator = resolved_issues + done_issues + skipped_issues
+    skip_rate = round(skipped_issues / denominator, 3) if denominator else 0.0
     avg_cluster_size = round(sum(cluster_sizes) / len(cluster_sizes), 2) if cluster_sizes else 0.0
     return ExecutionPatterns(
-        total_resolved=total_resolved,
-        total_skipped=total_skipped,
-        total_done=total_done,
+        resolved_issues=resolved_issues,
+        resolved_operations=resolved_operations,
+        done_issues=done_issues,
+        done_operations=done_operations,
+        skipped_issues=skipped_issues,
+        skipped_operations=skipped_operations,
         skip_rate=skip_rate,
         avg_cluster_size=avg_cluster_size,
     )
@@ -593,7 +681,7 @@ def lifecycle_inventory(
         issue_id
         for issue_id in queue_order
         if isinstance(issue_id, str)
-        and not issue_id.startswith(("triage::", "workflow::", "subjective::"))
+        and not is_marker_id(issue_id)
     ]
     backlog_by_dimension: Counter[str] = Counter()
     if isinstance(work_items, dict):
@@ -670,7 +758,8 @@ def collect_strategist_input(
         rework_loops=rework_loop_detection(work_items if isinstance(work_items, dict) else {}),
         completed_clusters=completed_clusters,
         execution_patterns=execution_pattern_analysis(
-            plan.get("execution_log", []) if isinstance(plan.get("execution_log"), list) else []
+            plan.get("execution_log", []) if isinstance(plan.get("execution_log"), list) else [],
+            plan=plan,
         ),
         debt_trajectory=wontfix_debt_trajectory(
             scan_history,

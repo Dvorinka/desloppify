@@ -24,7 +24,6 @@ from ..validation.enrich_checks import (
 from ..completion_flow import count_log_activity_since
 from ..observe_batches import observe_dimension_breakdown
 from ..review_coverage import (
-    active_triage_issue_ids,
     cluster_issue_ids,
     open_review_ids_from_state,
 )
@@ -169,7 +168,7 @@ def _organize_stage_warnings(plan: dict) -> list[str]:
     high_ratio = _clusters_with_high_step_ratio(plan)
     if high_ratio:
         names = ", ".join(name for name, _, _, _ in high_ratio)
-        warnings.append(f"1:1 step-to-issue ratio: {names}")
+        warnings.append(f"More steps than issues: {names}")
     clusters = plan.get("clusters", {})
     orphaned = [
         name for name, cluster in clusters.items()
@@ -238,7 +237,7 @@ def _validate_enrich_stage(
         plan,
         repo_root,
         phase_label="enrich",
-        triage_issue_ids=active_triage_issue_ids(plan, state) or None,
+        triage_issue_ids=active_triage_issue_scope(plan, state),
     )
     if failures:
         return False, failures[0].message
@@ -260,8 +259,8 @@ def _validate_sense_check_stage(
     if len(report) < 100:
         return False, f"Sense-check report too short ({len(report)} chars, need 100+)."
     manual_clusters = scoped_manual_clusters_with_issues(plan, state)
-    triage_issue_ids = active_triage_issue_ids(plan, state) or None
     triage_scope = active_triage_issue_scope(plan, state)
+    triage_issue_ids = triage_scope
     open_review_ids = open_review_ids_from_state(state) if triage_scope is None else triage_scope
     if not open_review_ids and not manual_clusters:
         return True, ""

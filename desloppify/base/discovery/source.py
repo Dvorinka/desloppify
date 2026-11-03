@@ -138,6 +138,12 @@ def collect_exclude_dirs(
     Combines DEFAULT_EXCLUSIONS (non-glob entries) + get_exclusions() (runtime/config),
     resolves each against *scan_root*. Filters out glob patterns (``*`` in name)
     since most CLI tools want plain directory paths.
+
+    Paths are fully resolved so the result stays absolute even when *scan_root*
+    is relative (e.g. ``Path(".")`` derived from relative source-file paths).
+    External tools such as bandit are handed an absolute scan target, so a
+    relative exclusion would silently fail to match and the excluded directory
+    would be scanned anyway.
     """
     resolved_exclusions = (
         extra_exclusions
@@ -149,7 +155,18 @@ def collect_exclude_dirs(
         if "*" not in pat:
             patterns.add(pat)
     patterns.update(p for p in resolved_exclusions if p and "*" not in p)
-    return [str(scan_root / p) for p in sorted(patterns) if p]
+    # External tools (bandit, ruff) walk absolute paths. A relative scan root
+    # — commonpath of relative file lists — would emit ``temp`` / ``temp/*``,
+    # which does not match ``/repo/temp/...``. Always return absolute dirs.
+    # An already-absolute pattern is kept as-is (Path join would drop the root).
+    root = Path(scan_root).resolve()
+    absolute: list[str] = []
+    for pat in sorted(patterns):
+        if not pat:
+            continue
+        candidate = Path(pat)
+        absolute.append(str(candidate if candidate.is_absolute() else root / candidate))
+    return absolute
 
 
 def _is_excluded_dir(name: str, rel_path: str, extra: tuple[str, ...]) -> bool:

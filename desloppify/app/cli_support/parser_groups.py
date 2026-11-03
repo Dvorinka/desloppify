@@ -106,6 +106,41 @@ examples:
         help="Language runtime option override (repeatable, e.g. --lang-opt roslyn_cmd='dotnet run ...')",
     )
     p_scan.add_argument(
+        "--diff",
+        type=str,
+        default=None,
+        metavar="BASE",
+        help=(
+            "PR review mode: annotate findings on base...HEAD changed lines "
+            "and report the strict-score delta (mechanical only, no LLM)."
+        ),
+    )
+    p_scan.add_argument(
+        "--annotations-json",
+        type=str,
+        default=None,
+        metavar="PATH",
+        help="With --diff: write machine-readable annotations JSON to PATH",
+    )
+    p_scan.add_argument(
+        "--max-regression",
+        type=float,
+        default=None,
+        metavar="POINTS",
+        help=(
+            "With --diff: exit 3 when the strict score drops more than POINTS "
+            "vs the stored baseline (PR gate; default: no gate)."
+        ),
+    )
+    p_scan.add_argument(
+        "--rescan",
+        action="store_true",
+        help=(
+            "Sanctioned mid-cycle rescan: refresh findings while preserving "
+            "issue IDs, queue state, and the plan baseline. No --attest needed."
+        ),
+    )
+    p_scan.add_argument(
         "--force-rescan",
         action="store_true",
         help="Bypass queue completion check (requires --attest)",
@@ -207,6 +242,11 @@ examples:
         action="store_true",
         dest="no_budget",
         help="Bypass per-detector noise budget (show all matching issues)",
+    )
+    p_show.add_argument(
+        "--blind",
+        action="store_true",
+        help="Score-free output for blind reviewers: suppress plan footer and prior subjective scores",
     )
 
 

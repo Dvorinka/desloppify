@@ -28,7 +28,10 @@ from desloppify.engine._plan.triage.prompt import (
     DismissedIssue,
     TriageResult,
 )
-from desloppify.engine._scoring.policy.core import FAILURE_STATUSES_BY_MODE
+from desloppify.engine._scoring.policy.core import (
+    FAILURE_STATUSES_BY_MODE,
+    is_failure,
+)
 from desloppify.engine.planning.render_sections import summary_lines
 
 # ---------------------------------------------------------------------------
@@ -146,6 +149,51 @@ class TestScoringPolicy:
         for mode, statuses in FAILURE_STATUSES_BY_MODE.items():
             assert "deferred" in statuses, f"deferred missing from {mode}"
             assert "triaged_out" in statuses, f"triaged_out missing from {mode}"
+
+
+class TestVerifiedAutoResolution:
+    """An auto-resolution the tool established itself is not strict debt.
+
+    `auto_resolved` fails strict because a finding that merely stopped
+    appearing may have been hidden rather than fixed. A deleted source file is
+    not that: it is checked on disk, it leaves nothing to fix or attest, and so
+    it can never reach `fixed` and never stops counting. Left in, strict decays
+    every time a codebase deletes dead code.
+    """
+
+    def test_inferred_auto_resolution_still_fails_strict(self):
+        issue = {"status": "auto_resolved"}
+        assert is_failure(issue, "strict")
+
+    def test_deleted_file_does_not_fail_strict(self):
+        issue = {"status": "auto_resolved", "resolution_kind": "file_deleted"}
+        assert not is_failure(issue, "strict")
+
+    def test_zone_policy_resolution_does_not_fail_strict(self):
+        issue = {"status": "auto_resolved", "resolution_kind": "zone_policy"}
+        assert not is_failure(issue, "strict")
+
+    def test_an_unknown_kind_is_not_a_way_out(self):
+        # Only the kinds the merge sets itself are exempt, so a hand-edited
+        # state file cannot invent one.
+        issue = {"status": "auto_resolved", "resolution_kind": "because_i_said_so"}
+        assert is_failure(issue, "strict")
+
+    def test_the_exemption_does_not_reach_other_statuses(self):
+        for status in ("open", "wontfix", "deferred", "triaged_out"):
+            issue = {"status": status, "resolution_kind": "file_deleted"}
+            assert is_failure(issue, "strict"), status
+
+    def test_verified_strict_is_unchanged(self):
+        # auto_resolved already passes verified_strict; the kind changes nothing.
+        for kind in (None, "file_deleted", "zone_policy"):
+            issue = {"status": "auto_resolved", "resolution_kind": kind}
+            assert not is_failure(issue, "verified_strict")
+
+    def test_missing_kind_behaves_as_before(self):
+        # State written by an older version has no `resolution_kind` at all.
+        assert is_failure({"status": "auto_resolved"}, "strict")
+        assert not is_failure({"status": "fixed"}, "strict")
 
 
 # ---------------------------------------------------------------------------
@@ -337,6 +385,86 @@ class TestReconcileDataMigration:
         assert "a" in result.resurfaced
         # State should be reopened from deferred back to open
         assert state["work_items"]["a"]["status"] == "open"
+
+    def test_reconcile_cleans_stale_reopen_metadata_on_skip_restore(self):
+        """#855: durable plan skip restored after a scan reopen keeps no stale
+        reopened metadata — terminal row mirrors the adjudicated skip."""
+        from desloppify.engine._state.merge_issues import upsert_issues
+
+        skipped_at = "2025-01-01T00:00:00+00:00"
+        plan = empty_plan()
+        plan["skipped"] = {
+            "fp1": {
+                "issue_id": "fp1",
+                "kind": "false_positive",
+                "note": "accepted",
+                "attestation": "reviewed",
+                "created_at": skipped_at,
+            },
+        }
+        issue = _issue("fp1", status="false_positive", detector="test_coverage")
+        issue.update(
+            note="accepted",
+            resolved_at=skipped_at,
+            resolution_attestation={
+                "kind": "manual",
+                "text": "reviewed",
+                "attested_at": skipped_at,
+                "scan_verified": False,
+            },
+            reopen_count=0,
+            last_seen="old",
+        )
+        state = {"issues": {"fp1": issue}, "scan_count": 5}
+
+        # Scan merge sees the finding again and reopens it.
+        upsert_issues(
+            state["issues"],
+            [_issue("fp1", detector="test_coverage")],
+            [],
+            "now",
+            lang="python",
+        )
+        assert state["issues"]["fp1"]["status"] == "open"
+
+        reconcile_plan_after_scan(plan, state)
+        row = state["work_items"]["fp1"]
+        assert row["status"] == "false_positive"
+        assert row["reopen_count"] == 1  # reappearance is genuine history (#881)
+        assert row["note"] == "accepted"
+        assert row["resolved_at"] == skipped_at
+        attestation = row["resolution_attestation"]
+        assert attestation["kind"] == "manual"
+        assert attestation["text"] == "reviewed"
+
+    def test_reconcile_restore_keeps_genuine_reopen_count(self):
+        """A pre-existing reopen history plus each new reappearance is
+        preserved — the count is genuine re-detection history (#881)."""
+        from desloppify.engine._state.merge_issues import upsert_issues
+
+        plan = empty_plan()
+        plan["skipped"] = {
+            "fp1": {
+                "issue_id": "fp1",
+                "kind": "false_positive",
+                "created_at": "2025-01-01T00:00:00+00:00",
+            },
+        }
+        issue = _issue("fp1", status="false_positive", detector="test_coverage")
+        issue.update(reopen_count=2, last_seen="old")
+        state = {"issues": {"fp1": issue}, "scan_count": 5}
+
+        upsert_issues(
+            state["issues"],
+            [_issue("fp1", detector="test_coverage")],
+            [],
+            "now",
+            lang="python",
+        )
+        assert state["issues"]["fp1"]["reopen_count"] == 3
+
+        reconcile_plan_after_scan(plan, state)
+        assert state["work_items"]["fp1"]["reopen_count"] == 3
 
 
 # ---------------------------------------------------------------------------

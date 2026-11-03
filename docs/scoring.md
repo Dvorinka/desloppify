@@ -78,8 +78,9 @@ Desloppify tracks two score variants:
 
 - **Lenient (default):** `open`, `deferred`, and `triaged_out` issues count as failures. Issues you mark as `wontfix`, `fixed`, `false_positive`, or `auto_resolved` do not penalize the score.
 - **Strict:** `wontfix` and `auto_resolved` issues also count as failures, in addition to everything in lenient. This reveals the "true debt" you have accepted.
+- **Verified strict:** `open`, `wontfix`, `fixed`, `false_positive`, `deferred`, and `triaged_out` count as failures — human-attested resolutions are not trusted; only scanner-confirmed resolution (`auto_resolved`) clears the finding.
 
-The gap between lenient and strict scores shows how much technical debt you are carrying via `wontfix` decisions.
+Why `auto_resolved` still counts in strict: a finding that merely stopped appearing in detector output may have been hidden rather than fixed, and strict refuses to take that on trust. Two auto-resolutions are exempt because the tool verified them directly rather than inferring them — `file_deleted` (the source file no longer exists on disk) and `zone_policy` (zone configuration no longer scores that detector for the file). Neither leaves anything a person could fix and attest, so counting them would make strict decay every time dead code is deleted. They are recorded as `resolution_kind` on the issue.
 
 ## Zone filtering
 

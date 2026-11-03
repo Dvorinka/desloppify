@@ -148,6 +148,17 @@ def _framework_tool_phase(spec: FrameworkSpec, tool: ToolIntegration) -> Detecto
             return [], {}
 
         scan_root = detection.package_root
+        if tool.cmd_resolver is not None:
+            resolved_cmd = tool.cmd_resolver(scan_root)
+            if resolved_cmd is not None and resolved_cmd != tool.cmd:
+                return make_tool_phase(
+                    tool.label,
+                    resolved_cmd,
+                    tool.fmt,
+                    tool.id,
+                    tool.tier,
+                    confidence=tool.confidence,
+                ).run(scan_root, lang)
         return tool_phase.run(scan_root, lang)
 
     return DetectorPhase(tool_phase.label, run, slow=tool_phase.slow)

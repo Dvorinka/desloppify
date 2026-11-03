@@ -13,7 +13,6 @@ from desloppify.intelligence.review.feedback_contract import (
     TRUSTED_IMPORT_COVERAGE_OVERRIDE_FLAG,
 )
 
-
 _SUPPORTED_RUNNERS = {"codex", "opencode", "rovodev"}
 
 
@@ -235,7 +234,11 @@ def enforce_trusted_import_coverage_gate(
     colorize_fn,
 ) -> None:
     """Block trusted assessment import when selected assessment dimensions are missing."""
-    if not selected_dims or not missing_dims:
+    # The coverage notice reports every scored dimension absent from this run.
+    # A deliberately scoped run only promises the dimensions in its packet.
+    selected = set(selected_dims)
+    missing_selected_dims = [dimension for dimension in missing_dims if dimension in selected]
+    if not selected_dims or not missing_selected_dims:
         return
     if allow_partial:
         print(
@@ -247,9 +250,9 @@ def enforce_trusted_import_coverage_gate(
         )
         return
 
-    preview = ", ".join(missing_dims[:5])
-    if len(missing_dims) > 5:
-        preview = f"{preview}, +{len(missing_dims) - 5} more"
+    preview = ", ".join(missing_selected_dims[:5])
+    if len(missing_selected_dims) > 5:
+        preview = f"{preview}, +{len(missing_selected_dims) - 5} more"
     print(colorize_fn(f"  Missing dimensions: {preview}", "yellow"), file=sys.stderr)
     print(
         colorize_fn(
@@ -262,7 +265,7 @@ def enforce_trusted_import_coverage_gate(
     print(
         colorize_fn(
             "  Suggested rerun: "
-            f"`{missing_dimensions_command(missing_dims=missing_dims, scan_path=scan_path)}`",
+            f"`{missing_dimensions_command(missing_dims=missing_selected_dims, scan_path=scan_path)}`",
             "dim",
         ),
         file=sys.stderr,

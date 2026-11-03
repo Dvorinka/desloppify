@@ -10,7 +10,7 @@ from desloppify.app.commands.helpers.command_runtime import command_runtime
 from desloppify.app.commands.helpers.state import require_issue_inventory
 from desloppify.base.output.terminal import colorize
 from desloppify.base.tooling import check_config_staleness
-from desloppify.engine.plan_state import load_plan
+from desloppify.app.commands.next.cmd import _load_plan_for_runtime
 from desloppify.engine.planning.queue_policy import build_backlog_queue
 
 from desloppify.app.commands.next.queue_flow import (
@@ -39,7 +39,7 @@ def cmd_backlog(args: argparse.Namespace) -> None:
         view=BACKLOG_QUEUE_VIEW,
         deps=QueueRenderDeps(
             resolve_lang_fn=resolve_lang,
-            load_plan_fn=load_plan,
+            load_plan_fn=lambda: _load_plan_for_runtime(runtime),
             build_work_queue_fn=build_backlog_queue,
             write_query_fn=write_query,
         ),

@@ -49,6 +49,7 @@ def run_structural_phase(
     min_loc: int = 40,
     god_rules=None,
     god_extractor_fn=None,
+    flat_dirs_filter: Callable[[str], bool] | None = None,
 ) -> tuple[list[Issue], dict[str, int]]:
     """Run large/complexity/flat-directory detectors for a language."""
     structural: dict[str, dict[str, Any]] = {}
@@ -100,9 +101,15 @@ def run_structural_phase(
             log_fn(f"         god classes: {len(god_entries)}")
 
     results = merge_structural_signals(structural, log_fn)
+    flat_file_finder = lang.file_finder
+    if flat_dirs_filter is not None:
+        base_finder = lang.file_finder
+        flat_file_finder = lambda p: [  # noqa: E731
+            f for f in base_finder(p) if flat_dirs_filter(f)
+        ]
     flat_entries, analyzed_dir_count = detect_flat_dirs(
         path,
-        file_finder=lang.file_finder,
+        file_finder=flat_file_finder,
         config=FlatDirDetectionConfig(),
     )
     for entry in flat_entries:

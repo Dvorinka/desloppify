@@ -136,6 +136,34 @@ class TestDetectPropInterfaceBloat:
         assert len(entries) == 1
         assert entries[0]["kind"] == "context"
 
+    def test_multiline_union_not_counted_as_props(self, tmp_path):
+        """Multiline union type alternatives do not inflate the prop count."""
+
+        source = (
+            "export interface SampleProps {\n  mode:\n"
+            + "\n".join(f'    | "option{index}"' for index in range(14))
+            + ";\n}\n"
+        )
+        _write(tmp_path, "sample.ts", source)
+        entries, checked = detect_prop_interface_bloat(tmp_path)
+        assert checked == 1
+        assert entries == []
+
+    def test_multiline_signature_continuations_not_counted(self, tmp_path):
+        """Parenthesised/tuple type continuations do not inflate the count."""
+
+        props = "\n".join(f"  prop{i}: string;" for i in range(10))
+        source = (
+            "interface ContinuationProps {\n"
+            f"{props}\n"
+            "  cb: (\n    value: number,\n    flag: boolean,\n  ) => void;\n"
+            "  pair: [\n    string,\n    number,\n  ];\n"
+            "}\n"
+        )
+        _write(tmp_path, "cont.ts", source)
+        entries, _ = detect_prop_interface_bloat(tmp_path)
+        assert entries == []
+
     def test_state_value_suffix(self, tmp_path):
         """Interfaces with StateValue suffix are detected."""
 

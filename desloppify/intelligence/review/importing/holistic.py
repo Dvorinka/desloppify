@@ -5,9 +5,9 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from desloppify.engine.concerns import cleanup_stale_dismissals, generate_concerns
 from desloppify.engine._state.merge import MergeScanOptions, merge_scan
 from desloppify.engine._state.schema import StateModel, utc_now
+from desloppify.engine.concerns import cleanup_stale_dismissals, generate_concerns
 from desloppify.engine.scoring import HOLISTIC_POTENTIAL
 from desloppify.intelligence.review.dimensions import normalize_dimension_name
 from desloppify.intelligence.review.dimensions.data import load_dimensions_for_lang
@@ -58,6 +58,7 @@ def import_holistic_issues(
     lang_name: str,
     *,
     project_root: Path | str | None = None,
+    allowed_dimensions: set[str] | None = None,
     utc_now_fn=utc_now,
 ) -> dict[str, Any]:
     """Import holistic (codebase-wide) issues into state."""
@@ -117,6 +118,13 @@ def import_holistic_issues(
         review_scope=review_scope,
         valid_dimensions=valid_dimensions,
     )
+    if allowed_dimensions is not None:
+        # Dims discovered inside a runner payload (issue dims, assessment
+        # keys) must not widen resolution beyond the declared packet scope
+        # (#830: partial import resolved findings in other dimensions).
+        imported_dimensions &= {
+            normalize_dimension_name(str(dim)) for dim in allowed_dimensions
+        }
 
     if dismissed_concerns:
         store = state.setdefault("concern_dismissals", {})
@@ -153,6 +161,7 @@ def import_holistic_issues(
         review_issues,
         options=MergeScanOptions(
             lang=lang_name,
+            scan_path=state.get("scan_path"),
             potentials=merge_potentials_dict,
             merge_potentials=True,
         ),

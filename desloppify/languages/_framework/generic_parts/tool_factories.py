@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import subprocess  # nosec B404
+from collections import Counter
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+from desloppify.base.discovery.file_paths import matches_exclusion, rel
+from desloppify.base.discovery.source import DEFAULT_EXCLUSIONS, get_exclusions
 from desloppify.languages._framework.base.types import (
     DetectorPhase,
     FixerConfig,
@@ -57,6 +60,28 @@ def _record_tool_failure_coverage(
             coverage_warnings.append(dict(record))
 
 
+def _drop_excluded_entries(entries: list[dict[str, Any]], lang: Any) -> list[dict[str, Any]]:
+    """Drop findings in excluded paths.
+
+    External tools walk the tree themselves and do not know the scan's
+    exclusions, so e.g. a linter also reports copies of the code in nested
+    git worktrees or build output.
+    """
+    exclusions = (
+        *DEFAULT_EXCLUSIONS,
+        *get_exclusions(),
+        *(getattr(lang, "exclusions", None) or ()),
+    )
+    kept: list[dict[str, Any]] = []
+    for entry in entries:
+        # Same normalization as make_issue, so the check sees the stored path.
+        rel_path = rel(str(entry.get("file", "")))
+        if any(matches_exclusion(rel_path, exclusion) for exclusion in exclusions):
+            continue
+        kept.append(entry)
+    return kept
+
+
 def make_tool_phase(
     label: str,
     cmd: str,
@@ -66,13 +91,15 @@ def make_tool_phase(
     *,
     confidence: str = "medium",
     cwd_fn: Callable[[Path, Any], Path] | None = None,
+    cmd_fn: Callable[[Path, Any], str | None] | None = None,
 ) -> DetectorPhase:
     """Create a DetectorPhase that runs an external tool and parses output."""
     parser = PARSERS[fmt]
 
     def run(path: Path, lang: Any) -> tuple[list[dict[str, Any]], dict[str, int]]:
         run_path = cwd_fn(path, lang).resolve() if cwd_fn is not None else path
-        run_result = run_tool_result(cmd, run_path, parser)
+        run_cmd = cmd_fn(path, lang) if cmd_fn is not None else None
+        run_result = run_tool_result(run_cmd or cmd, run_path, parser)
         if run_result.status == "error":
             _record_tool_failure_coverage(
                 lang,
@@ -81,7 +108,7 @@ def make_tool_phase(
                 result=run_result,
             )
             return [], {}
-        entries = list(run_result.entries)
+        entries = _drop_excluded_entries(run_result.entries, lang)
         meta = run_result.meta if isinstance(run_result.meta, dict) else {}
         meta_potential = meta.get("potential")
         potential = meta_potential if isinstance(meta_potential, int) else 0
@@ -143,9 +170,10 @@ def make_generic_fixer(
     fix_cmd = tool["fix_cmd"]
     if fix_cmd is None:
         raise ValueError("make_generic_fixer requires tool['fix_cmd'] to be provided")
+    parser = PARSERS[tool["fmt"]]
     detect = make_detect_fn(
         tool["cmd"],
-        PARSERS[tool["fmt"]],
+        parser,
         run_subprocess=run_subprocess,
     )
 
@@ -156,8 +184,16 @@ def make_generic_fixer(
         **kwargs: Any,
     ) -> FixResult:
         del kwargs
-        if dry_run or not path:
-            return FixResult(entries=[{"file": e["file"], "line": e["line"]} for e in entries])
+        before = Counter(e["file"] for e in entries)
+        if dry_run:
+            return FixResult(
+                entries=[
+                    {"file": file, "fixed_count": count, "summary": _issue_count_label(count)}
+                    for file, count in before.items()
+                ]
+            )
+        if not path:
+            raise ValueError("generic fixers need the scan path to run their tool")
         runner = run_subprocess or subprocess.run
         try:
             runner(
@@ -170,11 +206,26 @@ def make_generic_fixer(
             )
         except (FileNotFoundError, subprocess.TimeoutExpired):
             return FixResult(entries=[], skip_reasons={"tool_unavailable": len(entries)})
-        remaining = detect(path)
-        fixed_count = max(0, len(entries) - len(remaining))
-        return FixResult(
-            entries=[{"file": e["file"], "fixed": True} for e in entries[:fixed_count]]
-        )
+        # The fix command's exit code is not a failure signal: formatters such as
+        # ktlint exit non-zero when violations they cannot fix remain. Re-run the
+        # check instead, and claim nothing when it cannot be read.
+        recheck = run_tool_result(tool["cmd"], path, parser, run_subprocess=run_subprocess)
+        if recheck.status == "error":
+            return FixResult(entries=[], skip_reasons={"recheck_failed": len(entries)})
+        after = Counter(e["file"] for e in recheck.entries)
+        results = []
+        for file, count in before.items():
+            fixed_count = count - after[file]
+            if fixed_count > 0:
+                results.append(
+                    {
+                        "file": file,
+                        "fixed": True,
+                        "fixed_count": fixed_count,
+                        "summary": f"{fixed_count} fixed",
+                    }
+                )
+        return FixResult(entries=results)
 
     return FixerConfig(
         label=f"Fix {tool['label']} issues",
@@ -183,7 +234,12 @@ def make_generic_fixer(
         detector=smell_id,
         verb="Fixed",
         dry_verb="Would fix",
+        takes_scan_path=True,
     )
+
+
+def _issue_count_label(count: int) -> str:
+    return f"{count} issue" if count == 1 else f"{count} issues"
 
 
 __all__ = [

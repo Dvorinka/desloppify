@@ -184,7 +184,7 @@ def _require_organize_stage_for_complete(
         print(colorize(f"  {len(gaps)} cluster(s) still need enrichment:", "yellow"))
         for name, missing in gaps:
             print(colorize(f"    {name}: missing {', '.join(missing)}", "yellow"))
-        print(colorize('  Fix: desloppify plan cluster update <name> --description "..." --steps "step1" "step2"', "dim"))
+        print(colorize('  Fix: desloppify plan cluster update <name> --description "..." --add-step "step title"', "dim"))
         print(colorize(f"  Then: {TRIAGE_CMD_ORGANIZE}", "dim"))
     else:
         manual = manual_clusters_with_issues(plan)

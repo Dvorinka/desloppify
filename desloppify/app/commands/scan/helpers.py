@@ -12,6 +12,7 @@ from desloppify.base.discovery.source import (
     read_file_text,
 )
 from desloppify.base.discovery.file_paths import count_lines
+from desloppify.base.git_context import git_ignored_paths
 from desloppify.base.output.terminal import colorize
 
 logger = logging.getLogger(__name__)
@@ -29,11 +30,16 @@ def audit_excluded_dirs(
     if not exclusions:
         return []
 
+    project_root = Path(project_root)
     candidate_dirs = [
         ex_dir
         for ex_dir in exclusions
         if ex_dir not in DEFAULT_EXCLUSIONS and (project_root / ex_dir).is_dir()
     ]
+    # A git-ignored directory (IDE settings, tool state, local data, nested
+    # worktrees) is not project code, so excluding it can never be stale.
+    ignored = git_ignored_paths(candidate_dirs, str(project_root))
+    candidate_dirs = [ex_dir for ex_dir in candidate_dirs if ex_dir not in ignored]
     if not candidate_dirs:
         return []
 
@@ -149,35 +155,68 @@ def _format_hidden_by_detector(hidden_by_detector: dict[str, int]) -> str:
     return ", ".join(f"{det}: +{count}" for det, count in hidden_by_detector.items())
 
 
-def warn_explicit_lang_with_no_files(
-    args, lang, path: Path, metrics: dict | None
+def warn_no_reviewable_files(
+    args,
+    lang,
+    path: Path,
+    metrics: dict | None,
+    *,
+    zone_map=None,
 ) -> None:
-    """Warn when user explicitly selected a language but scan found zero files."""
-    explicit_lang = getattr(args, "lang", None)
-    if not explicit_lang or not lang or not metrics:
+    """Warn when a scan finds zero reviewable (production-zone) source files.
+
+    A vacuous scan still reports objective 100.0 — flag it loudly so a
+    misdetected language or a config-only tree does not read as healthy
+    (#700). Covers both zero discovered files and files all zoned
+    non-production.
+    """
+    if not lang or not metrics:
         return
-    if metrics.get("total_files", 0) > 0:
+    total_files = int(metrics.get("total_files", 0) or 0)
+    production_files = (
+        int(zone_map.production_count())
+        if zone_map is not None and hasattr(zone_map, "production_count")
+        else total_files
+    )
+    if production_files > 0:
         return
 
-    suggestion = " Omit `--lang` to auto-detect."
-    root = path if path.is_dir() else path.parent
-    try:
-        detected = lang_api.auto_detect_lang(root)
-    except ValueError as exc:
-        detected = None
-        logger.debug(
-            "Auto-detect failed while warning for explicit lang on %s: %s", root, exc
+    if total_files > 0:
+        message = (
+            f"{total_files} {lang.name} file(s) found under `{path}` but none are "
+            "production source (all test/config/generated/vendor)."
         )
     else:
-        if detected and detected != lang.name:
+        explicit_lang = getattr(args, "lang", None)
+        suggestion = ""
+        if explicit_lang:
+            suggestion = " Omit `--lang` to auto-detect."
+            root = path if path.is_dir() else path.parent
+            try:
+                detected = lang_api.auto_detect_lang(root)
+            except ValueError as exc:
+                detected = None
+                logger.debug(
+                    "Auto-detect failed while warning for explicit lang on %s: %s",
+                    root,
+                    exc,
+                )
+            else:
+                if detected and detected != lang.name:
+                    suggestion = (
+                        f" Detected `{detected}` for this path — use `--lang {detected}` "
+                        "or omit `--lang`."
+                    )
+        else:
             suggestion = (
-                f" Detected `{detected}` for this path — use `--lang {detected}` "
-                "or omit `--lang`."
+                " The detected language may not match this project — "
+                "check the scan path or pass `--lang`."
             )
+        message = f"No {lang.name} source files found under `{path}`.{suggestion}"
 
     print(
         colorize(
-            f"  ⚠ No {lang.name} source files found under `{path}`.{suggestion}",
+            f"  ⚠ {message} Objective scores are vacuous for this scan.",
             "yellow",
         )
     )
@@ -198,5 +237,5 @@ __all__ = [
     "format_delta",
     "_format_hidden_by_detector",
     "resolve_scan_profile",
-    "warn_explicit_lang_with_no_files",
+    "warn_no_reviewable_files",
 ]

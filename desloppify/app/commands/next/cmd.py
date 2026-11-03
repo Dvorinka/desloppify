@@ -12,7 +12,7 @@ from desloppify.app.commands.helpers.state import require_issue_inventory
 from desloppify.app.skill_docs import check_skill_version
 from desloppify.base.output.terminal import colorize
 from desloppify.base.tooling import check_config_staleness
-from desloppify.engine.plan_state import load_plan
+from desloppify.engine.plan_state import load_plan, plan_path_for_state
 from desloppify.engine.planning.queue_policy import build_execution_queue
 
 from .options import NextOptions
@@ -21,6 +21,13 @@ from .subjective import _low_subjective_dimensions
 
 # Backward-compatible test seam: `next` now uses the execution queue wrapper.
 build_work_queue = build_execution_queue
+
+
+def _load_plan_for_runtime(runtime) -> dict:
+    """Load the plan sibling to the resolved state path (--state aware)."""
+    if runtime.state_path:
+        return load_plan(plan_path_for_state(runtime.state_path))
+    return load_plan()
 
 
 def cmd_next(args: argparse.Namespace) -> None:
@@ -47,7 +54,7 @@ def cmd_next(args: argparse.Namespace) -> None:
         view=EXECUTION_QUEUE_VIEW,
         deps=QueueRenderDeps(
             resolve_lang_fn=resolve_lang,
-            load_plan_fn=load_plan,
+            load_plan_fn=lambda: _load_plan_for_runtime(runtime),
             build_work_queue_fn=build_work_queue,
             write_query_fn=write_query,
         ),

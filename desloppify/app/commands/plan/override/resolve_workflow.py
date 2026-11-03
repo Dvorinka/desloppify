@@ -87,7 +87,7 @@ STAGE_COACHING = {
         commands=(
             '    desloppify plan cluster create <name> --description "..."',
             "    desloppify plan cluster add <name> <issue-patterns>",
-            '    desloppify plan cluster update <name> --steps "step1" "step2"',
+            '    desloppify plan cluster update <name> --add-step "step1"',
             "    {organize_manual_command}",
         ),
         footer=("  All manual clusters must have descriptions and action_steps.",),
@@ -352,9 +352,10 @@ def _finalize_workflow_resolution(
     *,
     synthetic_ids: list[str],
     note: str | None,
+    issues: dict | None = None,
 ) -> None:
     purge_ids(plan, synthetic_ids)
-    step_messages = auto_complete_steps(plan)
+    step_messages = auto_complete_steps(plan, issues=issues)
     for message in step_messages:
         print(colorize(message, "green"))
     append_log_entry(plan, "done", issue_ids=synthetic_ids, actor="user", note=note)
@@ -472,10 +473,12 @@ def resolve_workflow_patterns(
             return blocked
 
     phase_before = current_lifecycle_phase(plan)
+    _state_for_steps = state_mod.load_state(state_path(args))
     _finalize_workflow_resolution(
         plan,
         synthetic_ids=synthetic_ids,
         note=note,
+        issues=(_state_for_steps.get("work_items") or _state_for_steps.get("issues", {})),
     )
     _reconcile_if_queue_drained(
         args, plan, synthetic_ids=synthetic_ids, phase_before=phase_before

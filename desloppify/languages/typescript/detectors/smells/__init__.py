@@ -92,6 +92,12 @@ def detect_smells(path: Path) -> tuple[list[dict], int]:
                     line.strip(),
                 ):
                     continue
+                if check["id"] == "sort_no_comparator" and re.search(
+                    r"Object\.(?:keys|entries|getOwnPropertyNames)\("
+                    r"[^)]*\)(?:\.\w+\([^)]*\))*\.sort\(\s*\)",
+                    line,
+                ):
+                    continue
                 smell_counts[check["id"]].append(
                     {
                         "file": filepath,

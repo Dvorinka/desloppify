@@ -33,9 +33,9 @@ non-``execute`` display phases back to the persisted ``"plan"`` mode.
 
 from __future__ import annotations
 
-from typing import Iterable
+from collections.abc import Iterable
 
-from desloppify.engine._plan.constants import SYNTHETIC_PREFIXES
+from desloppify.engine._plan.constants import is_marker_id
 from desloppify.engine._plan.schema import PlanModel, ensure_plan_defaults
 from desloppify.engine._state.issue_semantics import counts_toward_objective_backlog
 
@@ -83,7 +83,7 @@ def _refresh_state(plan: PlanModel) -> dict[str, object]:
 
 
 def _is_real_queue_issue(issue_id: str) -> bool:
-    return not any(str(issue_id).startswith(prefix) for prefix in SYNTHETIC_PREFIXES)
+    return not is_marker_id(str(issue_id))
 
 
 def _touches_objective_issue(

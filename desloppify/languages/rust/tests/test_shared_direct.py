@@ -153,3 +153,60 @@ fn cast(value: u32) -> Wrapper {
         transmute_wrapper,
         transmute_offset,
     ) is True
+
+
+def test_iter_public_types_metadata_crosses_multiline_attribute() -> None:
+    """#824: a multiline derive must not hide the earlier non_exhaustive."""
+    content = """
+#[non_exhaustive]
+#[derive(
+    Clone, Copy, Debug,
+)]
+pub enum Example {
+    A,
+    B,
+    C,
+    D,
+    E,
+}
+"""
+
+    blocks = rust_shared_mod._iter_public_types(content)
+
+    assert len(blocks) == 1
+    assert "#[non_exhaustive]" in blocks[0].attrs
+    assert "#[derive(" in blocks[0].attrs
+
+
+def test_preceding_metadata_multiline_attr_preserves_contents() -> None:
+    content = """
+#[serde(
+    rename_all = "camelCase",
+    deny_unknown_fields
+)]
+#[doc = "docs"]
+pub struct Item {
+    pub field: u8,
+}
+"""
+    start = content.index("pub struct")
+    metadata = rust_shared_mod._preceding_metadata(content, start)
+
+    assert "deny_unknown_fields" in metadata
+    assert "#[serde(" in metadata
+    assert '#[doc = "docs"]' in metadata
+
+
+def test_preceding_metadata_stops_at_real_code() -> None:
+    content = """
+fn helper() -> u8 {
+    42
+}
+
+#[inline]
+pub fn item() {}
+"""
+    start = content.index("pub fn item")
+    metadata = rust_shared_mod._preceding_metadata(content, start)
+
+    assert metadata == "#[inline]"

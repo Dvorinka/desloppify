@@ -65,11 +65,20 @@ PRE_REVIEW_WORKFLOW_IDS = frozenset(
 )
 STRATEGY_PREFIX = "strategy::"
 SYNTHETIC_PREFIXES = ("triage::", "workflow::", "subjective::", "strategy::")
+# queue_order entries with these prefixes are phase markers, not persisted
+# work items. ``strategy::`` ids name real state work items, so they stay
+# substantive even though the id shape is synthetic (#900).
+MARKER_PREFIXES = ("triage::", "workflow::", "subjective::")
 
 
 def is_synthetic_id(issue_id: str) -> bool:
     """Return True when a raw plan ID refers to synthetic queue work."""
     return any(issue_id.startswith(prefix) for prefix in SYNTHETIC_PREFIXES)
+
+
+def is_marker_id(issue_id: str) -> bool:
+    """Return True when a plan ID is a phase marker, not persisted work."""
+    return any(issue_id.startswith(prefix) for prefix in MARKER_PREFIXES)
 
 
 def is_workflow_id(issue_id: str) -> bool:
@@ -188,9 +197,11 @@ __all__ = [
     "QueueSyncResult",
     "normalize_queue_workflow_and_triage_prefix",
     "confirmed_triage_stage_names",
+    "is_marker_id",
     "is_synthetic_id",
     "is_triage_id",
     "is_workflow_id",
+    "MARKER_PREFIXES",
     "PRE_REVIEW_WORKFLOW_IDS",
     "recorded_unconfirmed_triage_stage_names",
     "STRATEGY_PREFIX",

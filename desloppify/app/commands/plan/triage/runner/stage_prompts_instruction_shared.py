@@ -152,7 +152,7 @@ _CLI_REFERENCE_TEMPLATE = """\
 {cli_command} plan cluster create <name> --description "<what this cluster addresses>"
 {cli_command} plan cluster add <name> <issue-patterns...>
 {cli_command} plan cluster remove <name> <issue-patterns...>
-{cli_command} plan cluster update <name> --description "<desc>" --steps "step 1" "step 2"
+{cli_command} plan cluster update <name> --description "<desc>" --add-step "<title>"
 {cli_command} plan cluster update <name> --add-step "<title>" --detail "<sub-points>" --effort small --issue-refs <id1> <id2>
 {cli_command} plan cluster update <name> --update-step N --detail "<sub-points>" --effort medium --issue-refs <id1>
 {cli_command} plan cluster update <name> --depends-on <other-cluster-name>

@@ -19,6 +19,7 @@ from desloppify.languages.python.detectors import deps as deps_detector_mod
 from desloppify.languages.python.detectors import facade as facade_detector_mod
 from desloppify.languages.python.detectors import smells as smells_detector_mod
 from desloppify.languages.python.detectors import unused as unused_detector_mod
+from desloppify.languages.python._helpers import py_has_main_guard
 from desloppify.languages.python.extractors import (
     detect_passthrough_functions,
     extract_py_functions,
@@ -94,6 +95,7 @@ def cmd_orphaned(args: argparse.Namespace) -> None:
         options=orphaned_detector_mod.OrphanedDetectionOptions(
             extra_entry_patterns=PY_ENTRY_PATTERNS,
             extra_barrel_names={"__init__.py"},
+            entry_point_detector=py_has_main_guard,
         ),
     )
     if getattr(args, "json", False):

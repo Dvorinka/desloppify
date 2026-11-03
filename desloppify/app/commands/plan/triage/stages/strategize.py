@@ -8,12 +8,19 @@ import logging
 
 from desloppify.base.output.terminal import colorize
 from desloppify.engine._plan.triage.strategist_data import collect_strategist_input
-from desloppify.engine._state.progression import append_progression_event, load_progression
+from desloppify.engine._state.progression import (
+    append_progression_event,
+    load_progression,
+)
 from desloppify.engine._state.schema import utc_now
 
 from ..lifecycle import TriageLifecycleDeps, ensure_triage_started
 from ..services import TriageServices, default_triage_services
-from ..stage_queue import has_triage_in_queue, inject_triage_stages, print_cascade_clear_feedback
+from ..stage_queue import (
+    has_triage_in_queue,
+    inject_triage_stages,
+    print_cascade_clear_feedback,
+)
 from .records import record_strategize_stage, resolve_reusable_report
 
 _logger = logging.getLogger(__name__)
@@ -154,9 +161,11 @@ def _create_strategic_work_items(
 
     for entry in strategic_issues:
         issue_id = f"strategy::{entry['identifier']}"
-        work_items[issue_id] = {
-            "status": "open",
+        content = {
             "detector": "strategy",
+            # Repo-global recommendations: "." stays in scope under any
+            # scan_path so path-scoped queue builds never drop them (#900).
+            "file": ".",
             "tier": _PRIORITY_TO_TIER.get(entry["priority"], 3),
             "priority": entry["priority"],
             "summary": entry["summary"],
@@ -167,7 +176,37 @@ def _create_strategic_work_items(
                 "recommendation": entry["recommendation"],
                 "source": "strategist",
             },
-            "created_at": utc_now(),
+        }
+        existing = work_items.get(issue_id)
+        if existing is None:
+            work_items[issue_id] = {
+                "status": "open",
+                **content,
+                "created_at": utc_now(),
+            }
+            if issue_id not in queue_order:
+                new_ids.append(issue_id)
+            continue
+
+        # A repeated recommendation must not erase canonical lifecycle
+        # evidence — refresh content but keep note/attestation/timestamps.
+        existing.update(content)
+        previous_status = str(existing.get("status", "open"))
+        if previous_status == "open":
+            if issue_id not in queue_order:
+                new_ids.append(issue_id)
+            continue
+        # Re-recommended while closed: record a proper reopen transition
+        # instead of silently resetting history (#882).
+        existing["status"] = "open"
+        existing["resolved_at"] = None
+        existing["reopen_count"] = int(existing.get("reopen_count") or 0) + 1
+        existing["resolution_attestation"] = {
+            "kind": "strategist_reopen",
+            "text": f"Re-recommended by strategist (was {previous_status})",
+            "attested_at": utc_now(),
+            "scan_verified": False,
+            "previous_status": previous_status,
         }
         if issue_id not in queue_order:
             new_ids.append(issue_id)
@@ -177,7 +216,9 @@ def _create_strategic_work_items(
     if new_ids:
         non_strategy = [fid for fid in queue_order if not fid.startswith("strategy::")]
         queue_order[:] = new_ids + non_strategy
-        from desloppify.engine._plan.constants import normalize_queue_workflow_and_triage_prefix
+        from desloppify.engine._plan.constants import (
+            normalize_queue_workflow_and_triage_prefix,
+        )
         normalize_queue_workflow_and_triage_prefix(queue_order)
 
 
@@ -200,6 +241,7 @@ def cmd_stage_strategize(
             services=resolved_services,
             state=state,
             start_message="  Planning mode auto-started (7 stages queued).",
+            attestation=getattr(args, "attestation", None),
             deps=TriageLifecycleDeps(
                 has_triage_in_queue=has_triage_in_queue,
                 inject_triage_stages=inject_triage_stages,
@@ -276,7 +318,9 @@ def cmd_stage_strategize(
         if resolved_services.save_state is not None:
             resolved_services.save_state(state, runtime.state_path)
         else:
-            from desloppify.app.commands.helpers.state_persistence import save_state_or_exit
+            from desloppify.app.commands.helpers.state_persistence import (
+                save_state_or_exit,
+            )
             save_state_or_exit(state, runtime.state_path)
 
     resolved_services.save_plan(plan)

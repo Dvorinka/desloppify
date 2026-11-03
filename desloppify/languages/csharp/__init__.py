@@ -92,7 +92,7 @@ class CSharpConfig(LangConfig):
                     "Command that emits Roslyn dependency JSON to stdout",
                 ),
             },
-            detect_markers=["global.json"],
+            detect_markers=["global.json", "*.sln", "*.slnx", "*.csproj", "*.fsproj", "Directory.Packages.props"],
             external_test_dirs=["tests", "test"],
             test_file_extensions=[".cs"],
             review_module_patterns_fn=csharp_review_module_patterns,

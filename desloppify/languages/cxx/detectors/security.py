@@ -23,6 +23,8 @@ from desloppify.languages._framework.generic_parts.tool_runner import (
     run_tool_result,
 )
 
+from desloppify.languages.cxx.cppcheck_diagnostics import configuration_checked_result
+
 logger = logging.getLogger(__name__)
 
 _SOURCE_SUFFIXES = frozenset({".c", ".cc", ".cpp", ".cxx"})
@@ -248,7 +250,9 @@ def _normalize_kind(check_id: str, message: str) -> str | None:
     ):
         return "command_injection"
 
-    if any(api in text for api in _UNSAFE_C_STRING_APIS):
+    # Diagnostic prose can mention identifiers such as ChartedTargets; an API
+    # name must be a complete token, not a substring of another identifier.
+    if any(re.search(rf"\b{re.escape(api)}\b", text) for api in _UNSAFE_C_STRING_APIS):
         return "unsafe_c_string"
     if "unsafebufferhandling" in check:
         return "unsafe_c_string"
@@ -263,6 +267,13 @@ def _normalize_kind(check_id: str, message: str) -> str | None:
 
 
 def _looks_security_finding(source: str, check_id: str, message: str) -> bool:
+    # Parser/configuration and reachability diagnostics are not vulnerabilities,
+    # even when a missing header or symbol happens to contain "Hash" or "Command".
+    if source == "cppcheck" and check_id.lower() in {
+        "missinginclude", "missingincludesystem", "syntaxerror", "unknownmacro",
+        "preprocessorerrordirective", "unusedfunction",
+    }:
+        return False
     if _normalize_kind(check_id, message) is not None:
         return True
 
@@ -495,6 +506,7 @@ def _run_cppcheck_invocation(scan_root: Path, files: list[str]) -> CxxToolScanRe
         scan_root,
         _parse_cppcheck_output,
     )
+    result = configuration_checked_result(result)
     state = _tool_result_state(result)
     return CxxToolScanResult(
         tool="cppcheck",

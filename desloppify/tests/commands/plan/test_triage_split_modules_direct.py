@@ -282,7 +282,7 @@ def test_validate_organize_submission_passes_state_to_enrichment_gate(monkeypatc
     monkeypatch.setattr(
         organize_stage_mod,
         "_manual_clusters_or_error",
-        lambda _plan, open_review_ids=None: ["manual"],
+        lambda _plan, open_review_ids=None, **_kwargs: ["manual"],
     )
 
     def _capture_enriched(plan, actual_state):
@@ -1319,6 +1319,27 @@ def test_orchestrator_pipeline_writes_exact_cli_helper(tmp_path: Path) -> None:
     assert "-m desloppify.cli" in text
 
 
+def test_cli_helper_bakes_in_explicit_lang_and_state(tmp_path: Path) -> None:
+    """Triage run with --lang/--state must propagate them to helper commands (#823)."""
+    args = SimpleNamespace(lang="rust", state=".desloppify/state-rust.json")
+    helper = orchestrator_pipeline_mod._write_desloppify_cli_helper(tmp_path, args)
+    text = helper.read_text(encoding="utf-8")
+    assert "--lang rust" in text
+    assert '--state .desloppify/state-rust.json' in text
+    # --lang is a global flag (before the subcommand), --state a subcommand flag.
+    assert text.index("--lang rust") < text.index('"$@"')
+    assert text.index("--state") > text.index('"$@"')
+
+
+def test_cli_helper_without_lang_state_unchanged(tmp_path: Path) -> None:
+    helper = orchestrator_pipeline_mod._write_desloppify_cli_helper(
+        tmp_path, SimpleNamespace(lang=None, state=None)
+    )
+    text = helper.read_text(encoding="utf-8")
+    assert "--lang" not in text
+    assert "--state" not in text
+
+
 def test_load_prior_reports_from_plan_uses_existing_stage_reports() -> None:
     plan = {
         "epic_triage_meta": {
@@ -1856,7 +1877,7 @@ def test_run_codex_pipeline_raises_on_stage_failure(monkeypatch, tmp_path: Path)
     monkeypatch.setattr(
         orchestrator_pipeline_mod,
         "_write_desloppify_cli_helper",
-        lambda run_dir: run_dir / "run_desloppify.sh",
+        lambda run_dir, _args: run_dir / "run_desloppify.sh",
     )
     monkeypatch.setattr(
         orchestrator_pipeline_mod,

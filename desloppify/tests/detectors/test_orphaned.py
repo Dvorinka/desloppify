@@ -8,9 +8,11 @@ from unittest.mock import patch
 from desloppify.engine.detectors.orphaned import (
     OrphanedDetectionOptions,
     _detect_nextjs_project,
+    _detect_react_router_project,
     _has_dunder_all,
     _is_dynamically_imported,
     _is_nextjs_convention_entry,
+    _is_react_router_convention_entry,
     detect_orphaned_files,
 )
 
@@ -683,3 +685,137 @@ class TestNextjsIntegration:
             )
 
         assert len(entries) == 1
+
+
+def test_exact_build_roots_do_not_suppress_uncompiled_namesakes(tmp_path):
+    compiled = _write_file(tmp_path / "compiled/unit.cpp")
+    unused = _write_file(tmp_path / "unused/unit.cpp")
+    graph = {
+        str(compiled): {**_graph_entry(), "is_entry_point": True},
+        str(unused): _graph_entry(),
+    }
+    entries, total = detect_orphaned_files(tmp_path, graph, [".cpp"])
+    assert total == 2
+    assert [entry["file"] for entry in entries] == [str(unused)]
+class TestNextjsPackageRoots:
+    def test_nested_next_app_does_not_hide_sibling_or_nested_package_orphans(self, tmp_path):
+        web = tmp_path / "apps" / "web"
+        web.mkdir(parents=True)
+        (web / "next.config.ts").write_text("export default {}")
+        (web / "package.json").write_text("{}")
+        routes = [
+            _write_file(web / "src/app/(app)/[id]/page.tsx"),
+            _write_file(web / "src/app/layout.tsx"),
+            _write_file(web / "src/app/api/route.ts"),
+            _write_file(web / "src/instrumentation.ts"),
+            _write_file(web / "src/proxy.ts"),
+        ]
+        orphan = _write_file(web / "src/unused.ts")
+        sibling = _write_file(tmp_path / "packages/cli/app/page.tsx")
+        nested = _write_file(web / "plugins/tool/app/page.tsx")
+        (web / "plugins/tool/package.json").write_text("{}")
+        graph = {str(file): _graph_entry() for file in [*routes, orphan, sibling, nested]}
+        entries, total = detect_orphaned_files(tmp_path, graph, [".ts", ".tsx"])
+        assert total == len(graph)
+        assert {entry["file"] for entry in entries} == {str(orphan), str(sibling), str(nested)}
+
+    def test_subdirectory_scan_uses_file_package_root_not_global_relative_path(self, tmp_path):
+        web = tmp_path / "apps/web"
+        web.mkdir(parents=True)
+        (web / "next.config.mjs").write_text("export default {}")
+        page = _write_file(web / "src/app/page.tsx")
+        instrumentation = _write_file(web / "src/instrumentation.ts")
+        graph = {str(file): _graph_entry() for file in [page, instrumentation]}
+        with patch("desloppify.engine.detectors.orphaned.rel", return_value="apps/web/src/not-an-entry.ts"):
+            entries, total = detect_orphaned_files(web / "src", graph, [".ts", ".tsx"])
+        assert total == 2
+        assert entries == []
+
+    def test_nested_next_detection_can_be_disabled(self, tmp_path):
+        web = tmp_path / "apps/web"
+        web.mkdir(parents=True)
+        (web / "next.config.ts").write_text("export default {}")
+        page = _write_file(web / "src/app/page.tsx")
+        entries, _ = detect_orphaned_files(
+            tmp_path, {str(page): _graph_entry()}, [".tsx"],
+            options=OrphanedDetectionOptions(detect_frameworks=False),
+        )
+        assert [entry["file"] for entry in entries] == [str(page)]
+
+    def test_convention_names_are_scoped_to_real_app_and_src_roots(self):
+        assert _is_nextjs_convention_entry("proxy.ts")
+        assert _is_nextjs_convention_entry("src/proxy.ts")
+        assert not _is_nextjs_convention_entry("lib/instrumentation.ts")
+        assert not _is_nextjs_convention_entry("components/app/page.tsx")
+        assert not _is_nextjs_convention_entry("src/app/_private/page.tsx")
+
+
+# ===================================================================
+# React Router / Remix framework awareness
+# ===================================================================
+
+
+class TestDetectReactRouterProject:
+    """Unit tests for _detect_react_router_project."""
+
+    def test_react_router_config(self, tmp_path):
+        (tmp_path / "react-router.config.ts").write_text("export default {}")
+        assert _detect_react_router_project(tmp_path) is True
+
+    def test_remix_config(self, tmp_path):
+        (tmp_path / "remix.config.js").write_text("module.exports = {}")
+        assert _detect_react_router_project(tmp_path) is True
+
+    def test_dependency_in_package_json(self, tmp_path):
+        # The framework template ships a Vite config rather than a
+        # react-router.config file, so the dependency is the reliable signal.
+        (tmp_path / "package.json").write_text(
+            '{"dependencies": {"@react-router/node": "^7.0.0"}}'
+        )
+        assert _detect_react_router_project(tmp_path) is True
+
+    def test_remix_dependency(self, tmp_path):
+        (tmp_path / "package.json").write_text(
+            '{"dependencies": {"@remix-run/node": "^2.0.0"}}'
+        )
+        assert _detect_react_router_project(tmp_path) is True
+
+    def test_unrelated_project(self, tmp_path):
+        (tmp_path / "package.json").write_text('{"dependencies": {"express": "^4.0.0"}}')
+        assert _detect_react_router_project(tmp_path) is False
+
+    def test_no_package_json(self, tmp_path):
+        assert _detect_react_router_project(tmp_path) is False
+
+
+class TestIsReactRouterConventionEntry:
+    """Unit tests for _is_react_router_convention_entry."""
+
+    def test_route_module(self):
+        assert _is_react_router_convention_entry("app/routes/app.settings.jsx") is True
+
+    def test_nested_route_module(self):
+        assert _is_react_router_convention_entry("app/routes/_index/route.jsx") is True
+
+    def test_src_routes(self):
+        assert _is_react_router_convention_entry("src/routes/dashboard.tsx") is True
+
+    def test_root_module(self):
+        assert _is_react_router_convention_entry("app/root.jsx") is True
+
+    def test_server_entry(self):
+        # `.stem` strips only the last suffix, so this stems to "entry.server".
+        assert _is_react_router_convention_entry("app/entry.server.jsx") is True
+
+    def test_client_entry(self):
+        assert _is_react_router_convention_entry("app/entry.client.tsx") is True
+
+    def test_ordinary_module_is_not_an_entry(self):
+        # The whole point: a genuinely orphaned file must still be reported.
+        assert _is_react_router_convention_entry("app/db.server.js") is False
+
+    def test_a_file_merely_named_root_deeper_in_the_tree(self):
+        assert _is_react_router_convention_entry("app/lib/nested/root.js") is False
+
+    def test_non_javascript_extension(self):
+        assert _is_react_router_convention_entry("app/routes/styles.css") is False

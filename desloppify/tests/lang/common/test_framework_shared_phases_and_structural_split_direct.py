@@ -48,11 +48,14 @@ def test_phase_dupes_filters_non_production_functions(monkeypatch) -> None:
 
 
 def test_phase_boilerplate_duplication_handles_none_and_entries(monkeypatch) -> None:
-    lang = SimpleNamespace(zone_map=None)
+    lang = SimpleNamespace(zone_map=None, detector_coverage={})
     monkeypatch.setattr(review_mod, "detect_with_jscpd", lambda _path: None)
     issues, potentials = review_mod.phase_boilerplate_duplication(Path("."), lang)
     assert issues == []
     assert potentials == {}
+    # jscpd failure records reduced coverage instead of a silent full pass (#821).
+    recorded = lang.detector_coverage.get("boilerplate_duplication")
+    assert recorded["status"] == "reduced"
 
     entries = [
         {
@@ -74,6 +77,28 @@ def test_phase_boilerplate_duplication_handles_none_and_entries(monkeypatch) -> 
     assert len(issues) == 1
     assert issues[0]["detector"] == "boilerplate_duplication"
     assert potentials == {"boilerplate_duplication": 2}
+
+
+def test_phase_boilerplate_duplication_honors_language_minimum(monkeypatch) -> None:
+    entries = [
+        {
+            "id": f"cluster-{window}",
+            "distinct_files": 2,
+            "window_size": window,
+            "sample": ["x = 1"],
+            "locations": [
+                {"file": "src/a.rs", "line": 1},
+                {"file": "src/b.rs", "line": 2},
+            ],
+        }
+        for window in (7, 8)
+    ]
+    lang = SimpleNamespace(zone_map=None, boilerplate_min_lines=8)
+    monkeypatch.setattr(review_mod, "detect_with_jscpd", lambda _path: entries)
+
+    issues, _potentials = review_mod.phase_boilerplate_duplication(Path("."), lang)
+
+    assert [issue["id"].rsplit("::", 1)[-1] for issue in issues] == ["cluster-8"]
 
 
 def test_phase_boilerplate_duplication_reuses_cached_entries(monkeypatch, tmp_path) -> None:
@@ -652,7 +677,10 @@ def test_generic_structural_phase_and_coupling_delegate(monkeypatch) -> None:
     )
 
     structural_phase = generic_structural_mod._make_structural_phase()
-    coupling_builder = lambda _path: {"graph": True}
+
+    def coupling_builder(_path):
+        return {"graph": True}
+
     coupling_phase = generic_structural_mod._make_coupling_phase(coupling_builder)
 
     structural_issues, structural_potentials = structural_phase.run(Path("."), SimpleNamespace(file_finder=lambda _p: []))

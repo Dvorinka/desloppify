@@ -31,6 +31,7 @@ from desloppify.languages.python.detectors import (
 )
 from desloppify.languages.python.detectors import deps as deps_detector_mod
 from desloppify.languages.python.detectors import facade as facade_detector_mod
+from desloppify.languages.python._helpers import py_has_main_guard
 from desloppify.languages.python.extractors import detect_passthrough_functions
 from desloppify.languages.python.extractors_classes import extract_py_classes
 from desloppify.state_io import Issue
@@ -167,6 +168,7 @@ def run_phase_coupling(path: Path, lang: LangRun, *, log_fn) -> tuple[list[Issue
             extra_entry_patterns=lang.entry_patterns,
             extra_barrel_names=lang.barrel_names,
             dynamic_import_finder=deps_detector_mod.find_python_dynamic_imports,
+            entry_point_detector=py_has_main_guard,
         ),
     )
     orphan_entries = filter_entries(zone_map, orphan_entries, "orphaned")

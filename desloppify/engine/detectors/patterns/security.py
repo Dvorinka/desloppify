@@ -229,3 +229,50 @@ def is_placeholder(value: str) -> bool:
     if _looks_like_non_secret_value(value):
         return True
     return False
+
+
+# Identifier-shaped constants: starts lowercase, camelCase throughout, letters
+# only — e.g. "clientSecret", "apiKeyField". Real secrets almost never look like
+# this; field-name constants in secret-named variables almost always do.
+_CAMEL_IDENTIFIER_RE = re.compile(r"[a-z][a-zA-Z]*")
+
+# Value-based gate thresholds: a name-matched literal must either carry a known
+# secret format or be long and high-entropy before it is reported.
+_SECRET_VALUE_MIN_LEN = 12
+_SECRET_VALUE_MIN_ENTROPY = 3.0
+
+
+def _shannon_entropy(value: str) -> float:
+    """Bits-per-character Shannon entropy of a string."""
+    if not value:
+        return 0.0
+    import math
+
+    length = len(value)
+    counts: dict[str, int] = {}
+    for char in value:
+        counts[char] = counts.get(char, 0) + 1
+    return -sum((n / length) * math.log2(n / length) for n in counts.values())
+
+
+def looks_like_secret_value(value: str) -> bool:
+    """Whether a name-matched literal plausibly is a real secret.
+
+    The detector already matches on variable/field *name*; this gate keeps it
+    from firing on values that plainly are not secrets: translation strings,
+    placeholders, and identifier-shaped constants like ``"apiKey"`` or
+    ``"token_usage"``. What remains must clear a length + entropy bar unless it
+    matches a known secret format (AWS key, GitHub token, JWT, ...).
+    """
+    if is_placeholder(value):
+        return False
+    stripped = value.strip()
+    if has_secret_format_match(stripped):
+        return True
+    if len(stripped) < _SECRET_VALUE_MIN_LEN:
+        return False
+    if _CAMEL_IDENTIFIER_RE.fullmatch(stripped) and any(
+        c.isupper() for c in stripped
+    ):
+        return False
+    return _shannon_entropy(stripped) >= _SECRET_VALUE_MIN_ENTROPY

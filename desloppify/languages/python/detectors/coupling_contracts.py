@@ -40,6 +40,32 @@ def _class_has_explicit_protocol(node: ast.ClassDef) -> bool:
     return any(_base_name(base).endswith("Protocol") for base in node.bases)
 
 
+def _class_method_names(node: ast.ClassDef) -> set[str]:
+    return {
+        stmt.name
+        for stmt in node.body
+        if isinstance(stmt, ast.FunctionDef | ast.AsyncFunctionDef)
+    }
+
+
+def _inherited_methods(
+    class_name: str,
+    methods: dict[str, set[str]],
+    bases_map: dict[str, list[str]],
+    seen: set[str] | None = None,
+) -> set[str]:
+    """Method names reachable through explicit in-project base classes."""
+    seen = set() if seen is None else seen
+    collected: set[str] = set()
+    for base in bases_map.get(class_name, []):
+        if not base or base in seen:
+            continue
+        seen.add(base)
+        collected |= methods.get(base, set())
+        collected |= _inherited_methods(base, methods, bases_map, seen)
+    return collected
+
+
 def _collect_self_attrs(node: ast.ClassDef) -> tuple[set[str], set[str]]:
     reads: set[str] = set()
     writes: set[str] = set()
@@ -75,6 +101,9 @@ def detect_implicit_mixin_contracts(
     entries: list[dict] = []
     candidates = 0
 
+    trees: list[tuple[str, ast.Module]] = []
+    methods: dict[str, set[str]] = {}
+    bases_map: dict[str, list[str]] = {}
     for filepath in find_py_files(path):
         full = Path(filepath) if Path(filepath).is_absolute() else get_project_root() / filepath
         try:
@@ -84,7 +113,13 @@ def detect_implicit_mixin_contracts(
             # Preserve parse/read context while intentionally skipping broken files.
             _ = (full, exc)
             continue
+        trees.append((filepath, tree))
+        for child in ast.walk(tree):
+            if isinstance(child, ast.ClassDef):
+                methods[child.name] = methods.get(child.name, set()) | _class_method_names(child)
+                bases_map[child.name] = [_base_name(base) for base in child.bases]
 
+    for filepath, tree in trees:
         for node in tree.body:
             if not isinstance(node, ast.ClassDef):
                 continue
@@ -94,9 +129,16 @@ def detect_implicit_mixin_contracts(
 
             declared = _class_declared_contract_attrs(node)
             reads, writes = _collect_self_attrs(node)
+            # self.<method>() resolves through own or inherited methods, not
+            # the host contract.
+            known = (
+                declared
+                | _class_method_names(node)
+                | _inherited_methods(node.name, methods, bases_map)
+            )
             required = {
                 name
-                for name in (reads - writes - declared)
+                for name in (reads - writes - known)
                 if name and not name.startswith("__") and name not in _IGNORED_SELF_ATTRS
             }
             if len(required) < min_required_attrs:

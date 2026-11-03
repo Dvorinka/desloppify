@@ -323,7 +323,7 @@ def _build_claude_launch_prompt(
         *batch_sections,
         policy_text,
         constraints_text,
-        render_scoring_frame(),
+        render_scoring_frame(tuple(sorted(all_dims))),
         render_scan_evidence_note(),
         render_task_requirements(issues_cap=combined_cap, dim_set=all_dims),
         render_scope_enums(),
@@ -584,6 +584,7 @@ def do_external_submit(
         code = run_followup_scan(
             lang_name=lang.name,
             scan_path=scan_path,
+            state_file=state_file,
             deps=FollowupScanDeps(
                 project_root=_runtime_project_root(),
                 timeout_seconds=FOLLOWUP_SCAN_TIMEOUT_SECONDS,

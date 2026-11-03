@@ -58,6 +58,12 @@ desloppify plan triage --stage organize --report "summary of priorities..."
 desloppify plan triage --complete --strategy "execution plan..."
 ```
 
+**Report contract.** `--report` text is parsed for issue citations — cite issues by their
+literal ID (e.g. `review::a1b2c3d4` or `unused::src/foo.py::helper`) exactly as shown by
+`desloppify show`; bare 8+ char hex suffixes also resolve. The `reflect` report MUST start
+with a `## Coverage Ledger` section containing one line per issue covered —
+`[id] -> <disposition>` — or the stage fails validation with 0 citations.
+
 For automated triage: `desloppify plan triage --run-stages --runner codex` (Codex), `--runner claude` (Claude), or `--runner rovodev` (Rovo Dev). Options: `--only-stages`, `--dry-run`, `--stage-timeout-seconds`.
 
 Then shape the queue. **The plan shapes everything `next` gives you** — `next` is the execution queue, not the full backlog. Don't skip this step.
@@ -74,6 +80,8 @@ desloppify plan skip <pat>              # defer — hide from next
 ### Phase 3: Execute — grind the queue to completion
 
 Trust the plan and execute. Don't rescan mid-queue — finish the queue first.
+If you must verify a fix mid-cycle, use `desloppify scan --rescan` — it refreshes
+findings while preserving issue IDs, queue state, and the plan baseline.
 
 **Branch first.** Create a dedicated branch — never commit health work directly to main:
 ```bash
@@ -113,6 +121,7 @@ If `next` suggests an auto-fixer, run `desloppify autofix <fixer> --dry-run` to 
 - **Auto-clusters**: related findings are auto-grouped in `next`. Drill in with `next --cluster <name>`.
 - **Zones**: production/script (scored), test/config/generated/vendor (not scored). Fix with `zone set`.
 - **Wontfix cost**: widens the lenient↔strict gap. Challenge past decisions when the gap grows.
+- **Review-finding wontfix**: resolving a subjective review finding as `wontfix` (accepting the tradeoff) marks that dimension's assessment stale, so `next` will request a re-review of the same dimension even with no source changes. This is deliberate — a re-review re-grounds the score once findings are dispositioned, and prevents freezing a score by accepting every finding. The assessment score is preserved meanwhile; it is not zeroed.
 
 ### Scoring
 
@@ -178,6 +187,15 @@ Return machine-readable JSON for review imports. For `--external-submit`, includ
 - Robust session flow (recommended): `desloppify review --external-start --external-runner claude` → use generated prompt/template → run printed `--external-submit` command.
 - Durable scored import (legacy): `desloppify review --import findings.json --attested-external --attest "I validated this review was completed without awareness of overall score and is unbiased."`
 - Findings-only fallback: `desloppify review --import findings.json`
+
+**`--attested-external` requirements** (all mandatory — it fails closed):
+
+- `--attest` must contain both the phrases `without awareness` and `unbiased`.
+- The import file must carry valid blind-packet provenance produced by a
+  `claude` runner packet; other runners are rejected.
+- Cannot be combined with `--manual-override` or `--allow-partial`.
+- `assessments` keys must be the literal dimension names from the query —
+  partial coverage is dropped, not scored.
 
 #### Reviewer agent prompt
 
@@ -256,7 +274,7 @@ When desloppify itself appears wrong or inconsistent — a bug, a bad detection,
 Clone the tool repo to a temp directory, make the fix there, and verify it works against the project you're scanning before pushing.
 
 ```bash
-git clone https://github.com/peteromallet/desloppify.git /tmp/desloppify-fix
+git clone https://github.com/Dvorinka/desloppify.git /tmp/desloppify-fix
 cd /tmp/desloppify-fix
 git checkout -b fix/<short-description>
 ```
@@ -287,12 +305,12 @@ Clean up after: `rm -rf /tmp/desloppify-fix`
 
 ### File an issue (fallback)
 
-If the fix is unclear or the change needs discussion, open an issue at `https://github.com/peteromallet/desloppify/issues` with a minimal repro: command, path, expected output, actual output.
+If the fix is unclear or the change needs discussion, open an issue at `https://github.com/Dvorinka/desloppify/issues` with a minimal repro: command, path, expected output, actual output.
 
 ## Prerequisite
 
-`command -v desloppify >/dev/null 2>&1 && echo "desloppify: installed" || echo "NOT INSTALLED — run: uvx --from git+https://github.com/peteromallet/desloppify.git desloppify"`
+`command -v desloppify >/dev/null 2>&1 && echo "desloppify: installed" || echo "NOT INSTALLED — run: uvx --from git+https://github.com/Dvorinka/desloppify.git desloppify"`
 
-If `uvx` is not available: `pip install desloppify[full] && desloppify setup`
+If `uvx` is not available: `pip install "desloppify[full] @ git+https://github.com/Dvorinka/desloppify" && desloppify setup`
 
 <!-- desloppify-end -->

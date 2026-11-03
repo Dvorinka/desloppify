@@ -37,6 +37,7 @@ from desloppify.languages.rust.detectors import (
     detect_thread_safety_contracts,
     detect_unsafe_api_usage,
 )
+from desloppify.languages.rust.detectors._shared import _cargo_target_paths
 from desloppify.languages.rust.detectors.deps import build_dep_graph
 from desloppify.languages.rust.extractors import extract_functions, find_rust_files
 from desloppify.languages.rust.phases import (
@@ -51,6 +52,7 @@ from desloppify.languages.rust.tools import (
     parse_cargo_errors,
     parse_clippy_messages,
     run_rustdoc_result,
+    scope_cargo_command,
 )
 
 DetectCommand = Callable[[argparse.Namespace], None]
@@ -101,6 +103,7 @@ cmd_orphaned = make_cmd_orphaned(
     ],
     extra_barrel_names={"lib.rs"},
     module_name=__name__,
+    entry_patterns_fn=_cargo_target_paths,
 )
 cmd_dupes = make_cmd_dupes(extract_functions_fn=extract_functions, module_name=__name__)
 cmd_smells = make_cmd_smells(detect_smells, module_name=__name__)
@@ -180,11 +183,15 @@ def _make_entry_detect_command(
 
 cmd_clippy_warning = _make_tool_detect_command(
     RUST_CLIPPY_LABEL,
-    lambda path: run_tool_result(RUST_CLIPPY_CMD, path, parse_clippy_messages),
+    lambda path: run_tool_result(
+        scope_cargo_command(RUST_CLIPPY_CMD, path), path, parse_clippy_messages
+    ),
 )
 cmd_cargo_error = _make_tool_detect_command(
     RUST_CHECK_LABEL,
-    lambda path: run_tool_result(RUST_CHECK_CMD, path, parse_cargo_errors),
+    lambda path: run_tool_result(
+        scope_cargo_command(RUST_CHECK_CMD, path), path, parse_cargo_errors
+    ),
 )
 cmd_rustdoc_warning = _make_tool_detect_command(
     RUST_RUSTDOC_LABEL,

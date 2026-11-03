@@ -12,6 +12,8 @@ from desloppify.languages._framework.issue_factories import (
     make_unused_issues,
 )
 from desloppify.languages._framework.base.types import LangRuntimeContract
+from desloppify.languages._framework.generic_parts.tool_factories import _record_tool_failure_coverage
+from desloppify.languages._framework.generic_parts.tool_runner import ToolRunResult
 from desloppify.languages.python.detectors import (
     responsibility_cohesion as cohesion_detector_mod,
 )
@@ -108,6 +110,19 @@ PY_ENTRY_PATTERNS = [
 
 def phase_unused(path: Path, lang: LangRuntimeContract) -> tuple[list[Issue], dict[str, int]]:
     entries, total_files = unused_detector_mod.detect_unused(path)
+    if entries is None:
+        _record_tool_failure_coverage(
+            lang,
+            detector="unused",
+            label="ruff/pyflakes",
+            result=ToolRunResult(
+                entries=[],
+                status="error",
+                error_kind="missing_tool",
+                message="neither ruff nor pyflakes is available",
+            ),
+        )
+        return [], {}
     return make_unused_issues(entries, log), {
         "unused": adjust_potential(lang.zone_map, total_files),
     }

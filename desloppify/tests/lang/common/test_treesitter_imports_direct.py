@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import builtins
 from pathlib import Path
 from types import SimpleNamespace
@@ -80,6 +81,50 @@ def test_graph_helpers_build_internal_edges_and_builder(monkeypatch, tmp_path: P
         SimpleNamespace(import_query=None, resolve_import=None),
         file_list,
     ) == {}
+
+
+def test_graph_builds_edges_from_relative_file_lists(tmp_path: Path, monkeypatch) -> None:
+    """Relative file lists (find_source_files output) must still produce edges."""
+    src_dir = tmp_path / "src"
+    src_dir.mkdir()
+    (src_dir / "main.js").write_text("import { x } from './dep.js';\n", encoding="utf-8")
+    (src_dir / "dep.js").write_text("export const x = 1;\n", encoding="utf-8")
+
+    monkeypatch.setattr(graph_mod, "_get_parser", lambda _grammar: ("parser", "language"))
+    monkeypatch.setattr(graph_mod, "_make_query", lambda _language, source: source)
+    monkeypatch.setattr(
+        graph_mod,
+        "get_or_parse_tree",
+        lambda filepath, *_a, **_k: (b"", SimpleNamespace(root_node=filepath)),
+    )
+    matches = {
+        "src/main.js": [(0, {"path": FakeNode("string", text="'./dep.js'")})],
+        "src/dep.js": [],
+    }
+    monkeypatch.setattr(graph_mod, "_run_query", lambda _query, root: matches[root])
+    monkeypatch.setattr(graph_mod, "_unwrap_node", lambda node: node)
+
+    spec = SimpleNamespace(
+        grammar="javascript",
+        import_query="imports",
+        resolve_import=scripts_mod.resolve_js_import,
+    )
+
+    graph = graph_mod.ts_build_dep_graph(tmp_path, spec, ["src/main.js", "src/dep.js"])
+    assert graph["src/main.js"]["imports"] == {"src/dep.js"}
+    assert graph["src/dep.js"]["importers"] == {"src/main.js"}
+    assert graph["src/dep.js"]["importer_count"] == 1
+    assert graph["src/main.js"]["import_count"] == 1
+
+
+def test_resolve_js_import_is_independent_of_cwd(tmp_path: Path, monkeypatch) -> None:
+    src_dir = tmp_path / "src"
+    src_dir.mkdir()
+    (src_dir / "dep.js").write_text("export const x = 1;\n", encoding="utf-8")
+
+    monkeypatch.chdir(tmp_path.parent)
+    resolved = scripts_mod.resolve_js_import("./dep.js", "src/main.js", str(tmp_path))
+    assert resolved == os.path.normpath(os.path.join(str(tmp_path), "src", "dep.js"))
 
 
 def test_import_normalize_helpers_strip_comments_and_log_lines() -> None:
@@ -317,3 +362,23 @@ def test_script_import_cache_reset_invalidates_php_lookup_state(tmp_path: Path) 
     scripts_mod.reset_script_import_caches(str(tmp_path))
 
     assert scripts_mod.resolve_php_import("User", "", str(tmp_path)) == str(second_file)
+
+
+def test_jvm_resolvers_find_imports_in_gradle_modules(tmp_path: Path) -> None:
+    module_kt = tmp_path / "android" / "src" / "main" / "java" / "com" / "acme" / "Ads.kt"
+    module_kt.parent.mkdir(parents=True)
+    module_kt.write_text("class Ads\n", encoding="utf-8")
+    # build output must not win over real sources
+    generated_dir = tmp_path / "android" / "build" / "generated" / "com" / "acme"
+    generated_dir.mkdir(parents=True)
+    (generated_dir / "Ads.kt").write_text("class Ads\n", encoding="utf-8")
+    module_java = tmp_path / "core" / "src" / "main" / "java" / "com" / "acme" / "Repo.java"
+    module_java.parent.mkdir(parents=True)
+    module_java.write_text("class Repo {}\n", encoding="utf-8")
+
+    # discovery is memoized per scan root, so create every module first
+    assert backend_mod.resolve_kotlin_import("com.acme.Ads", "", str(tmp_path)) == str(module_kt)
+    assert backend_mod.resolve_java_import("com.acme.Repo", "", str(tmp_path)) == str(module_java)
+
+    resolver_cache_mod.reset_import_cache()
+    assert backend_mod.resolve_kotlin_import("com.acme.Ads", "", str(tmp_path)) == str(module_kt)

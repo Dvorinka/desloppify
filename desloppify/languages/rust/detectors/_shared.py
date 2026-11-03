@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import re
 import tomllib
 from dataclasses import dataclass
@@ -195,6 +196,52 @@ def _group_files_by_manifest(path: Path) -> dict[Path, list[str]]:
         context = describe_rust_file(absolute)
         grouped.setdefault(context.manifest_dir, []).append(filepath)
     return grouped
+
+
+_SKIP_MANIFEST_DIRS = {"target", "vendor", "node_modules", ".git"}
+
+
+def _cargo_target_paths(path: Path) -> list[str]:
+    """Return manifest-declared custom target paths (``[[bin]]``, ``[lib]``,
+    ``[[test]]``, ``[[example]]``, ``[[bench]]``), manifest-relative.
+
+    Cargo packages may name arbitrary entry files (#756); treat them as
+    entry roots so the orphaned detector does not flag them as dead code.
+    """
+    root = Path(path).resolve()
+    paths: list[str] = []
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [d for d in dirnames if d not in _SKIP_MANIFEST_DIRS]
+        if "Cargo.toml" not in filenames:
+            continue
+        manifest = Path(dirpath) / "Cargo.toml"
+        text = read_text_or_none(manifest)
+        if text is None:
+            continue
+        try:
+            data = tomllib.loads(text)
+        except tomllib.TOMLDecodeError:
+            continue
+        try:
+            base_rel = manifest.parent.relative_to(root)
+        except ValueError:
+            continue
+
+        def _add(target: str) -> None:
+            joined = (base_rel / target).as_posix()
+            paths.append(joined)
+
+        lib = data.get("lib")
+        if isinstance(lib, dict) and isinstance(lib.get("path"), str):
+            _add(lib["path"])
+        for section in ("bin", "test", "example", "bench"):
+            entries = data.get(section)
+            if not isinstance(entries, list):
+                continue
+            for entry in entries:
+                if isinstance(entry, dict) and isinstance(entry.get("path"), str):
+                    _add(entry["path"])
+    return paths
 
 
 def _declared_features(manifest_path: Path) -> set[str]:
@@ -470,11 +517,19 @@ def _find_matching_delimiter(text: str, start_index: int, opening: str, closing:
     return rust_tools._find_matching_delimiter(text, start_index, opening, closing)
 
 
+_DECL_START_RE = re.compile(
+    r"^(?:pub|fn|let|impl|use|mod|static|const|type|trait|struct|enum|extern|macro_rules)\b"
+)
+# Bound for a single multiline attribute's line count — generous, stops a
+# pathological walk from consuming the whole file on non-attribute code.
+_MULTILINE_ATTR_LIMIT = 40
+
+
 def _preceding_attributes(content: str, start: int) -> str:
     return "\n".join(
         line
         for line in _preceding_metadata(content, start).splitlines()
-        if line.strip().startswith("#[")
+        if not line.strip().startswith(("///", "//!"))
     )
 
 
@@ -489,11 +544,36 @@ def _preceding_metadata(content: str, start: int) -> str:
                 break
             index -= 1
             continue
-        if stripped.startswith("#[") or stripped.startswith("///") or stripped.startswith("//!"):
+        if stripped.startswith(("#[", "///", "//!")):
             attrs.append(stripped)
             index -= 1
             continue
-        break
+        # Possibly the tail of a multiline attribute (`#[derive(\n ... \n)]`):
+        # walk up to the `#[` opener, rejecting lines that can only be code.
+        # (#824 — a closing `)]` line must not end the metadata run.)
+        tail: list[str] = []
+        cursor = index
+        while cursor >= 0 and len(tail) < _MULTILINE_ATTR_LIMIT:
+            candidate = lines[cursor].strip()
+            if candidate.startswith("#["):
+                tail.append(candidate)
+                break
+            if (
+                not candidate
+                or candidate.startswith("//")
+                or candidate.endswith((";", "{", "}"))
+                or _DECL_START_RE.match(candidate)
+            ):
+                tail.clear()
+                break
+            tail.append(candidate)
+            cursor -= 1
+        else:
+            tail.clear()
+        if not tail or not tail[-1].startswith("#["):
+            break
+        attrs.extend(tail)
+        index = cursor - 1
     return "\n".join(reversed(attrs))
 
 

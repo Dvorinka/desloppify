@@ -613,7 +613,7 @@ class TestMechanicalStaleness:
             file="big.py",
             detail={"loc": 500},
         )
-        merge_scan(state, [structural], MergeScanOptions(force_resolve=True))
+        merge_scan(state, [structural], MergeScanOptions(force_resolve=True, potentials={"structural": 1}))
         # Clear stale flag
         state["subjective_assessments"]["design_coherence"] = {"score": 75.0}
 
@@ -622,7 +622,7 @@ class TestMechanicalStaleness:
         state["work_items"]["structural::big.py::large_file"]["status"] = "fixed"
 
         # Second scan: structural issue absent → scan-verified, detector changed
-        merge_scan(state, [], MergeScanOptions(force_resolve=True))
+        merge_scan(state, [], MergeScanOptions(potentials={"structural": 1}))
 
         dc = state["subjective_assessments"]["design_coherence"]
         assert dc["needs_review_refresh"] is True

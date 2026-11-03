@@ -10,10 +10,9 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from desloppify.languages.framework import LangRun
 
-from desloppify.app.commands.helpers.lang import resolve_lang, resolve_lang_settings
 from desloppify.app.commands.helpers.command_runtime import command_runtime
+from desloppify.app.commands.helpers.lang import resolve_lang, resolve_lang_settings
 from desloppify.app.commands.helpers.runtime_options import resolve_lang_runtime_options
-from desloppify.base.config import target_strict_score_from_config
 from desloppify.app.commands.scan.coverage import (
     coerce_int as _coerce_int,
 )
@@ -23,39 +22,49 @@ from desloppify.app.commands.scan.coverage import (
 from desloppify.app.commands.scan.coverage import (
     seed_runtime_coverage_warnings as _seed_runtime_coverage_warnings,
 )
-from desloppify.app.commands.scan.plan_reconcile import (
-    reconcile_plan_post_scan as _reconcile_plan_post_scan_impl,
-)
 from desloppify.app.commands.scan.helpers import (
     audit_excluded_dirs,
     collect_codebase_metrics,
     effective_include_slow,
     resolve_scan_profile,
-    warn_explicit_lang_with_no_files,
+    warn_no_reviewable_files,
+)
+from desloppify.app.commands.scan.plan_reconcile import (
+    load_scan_false_positive_skip_ids,
+)
+from desloppify.app.commands.scan.plan_reconcile import (
+    reconcile_plan_post_scan as _reconcile_plan_post_scan_impl,
 )
 from desloppify.app.commands.scan.wontfix import (
     augment_with_stale_wontfix_issues as _augment_stale_wontfix_impl,
 )
 from desloppify.base.config import save_config as _save_config
+from desloppify.base.config import target_strict_score_from_config
 from desloppify.base.discovery.file_paths import rel
-from desloppify.base.output.terminal import colorize
+from desloppify.base.discovery.paths import get_project_root
 from desloppify.base.discovery.source import (
     disable_file_cache,
     enable_file_cache,
     get_exclusions,
 )
-from desloppify.base.discovery.paths import get_project_root
+from desloppify.base.exception_sets import PLAN_LOAD_EXCEPTIONS
+from desloppify.base.output.terminal import colorize
+from desloppify.base.subjective_dimensions import (
+    resettable_default_dimensions,
+)
+from desloppify.engine._plan.persistence import load_plan
+from desloppify.engine._plan.scan_issue_reconcile import reconcile_plan_after_scan
+from desloppify.engine._state import _recompute_stats
 from desloppify.engine._state.filtering import path_scoped_issues
 from desloppify.engine._state.merge import MergeScanOptions, merge_scan
 from desloppify.engine._state.noise import (
     apply_issue_noise_budget,
     resolve_issue_noise_settings,
 )
+from desloppify.engine._state.schema import scan_source
 from desloppify.engine._work_queue.issues import mark_stale_holistic
-from desloppify.engine.planning.scan import PlanScanOptions, generate_issues as generate_plan_issues
-from desloppify.base.subjective_dimensions import (
-    resettable_default_dimensions,
-)
+from desloppify.engine.planning.scan import PlanScanOptions
+from desloppify.engine.planning.scan import generate_issues as generate_plan_issues
 from desloppify.languages.framework import (
     DetectorCoverageRecord,
     LangRunOverrides,
@@ -64,7 +73,13 @@ from desloppify.languages.framework import (
     make_lang_run,
     reset_script_import_caches,
 )
-from desloppify.state_io import StateModel, ensure_state_defaults, save_state, utc_now
+from desloppify.state_io import (
+    StateModel,
+    ensure_state_defaults,
+    save_state,
+    state_lock,
+    utc_now,
+)
 from desloppify.state_scoring import ScoreSnapshot, score_snapshot
 
 _WONTFIX_DECAY_SCANS_DEFAULT = 20
@@ -405,8 +420,12 @@ def run_scan_generation(
             runtime.path,
             files=scanned_files,
         )
-        warn_explicit_lang_with_no_files(
-            runtime.args, runtime.lang, runtime.path, codebase_metrics
+        warn_no_reviewable_files(
+            runtime.args,
+            runtime.lang,
+            runtime.path,
+            codebase_metrics,
+            zone_map=getattr(runtime.lang, "zone_map", None),
         )
         issues = _augment_with_stale_exclusion_issues(
             issues,
@@ -429,58 +448,204 @@ def run_scan_generation(
         disable_file_cache()
 
 
+def _restore_failed_detector_potentials(
+    state: dict,
+    lang_name: str | None,
+    *,
+    coverage: dict | None,
+    potentials: dict,
+    prev_lang_potentials: dict,
+) -> None:
+    """Preserve prior scoring potential for detectors that failed this scan.
+
+    A failed detector drops out of the new potentials dict; on replace-mode
+    merges its previous entry disappears too, so retained open findings stop
+    contributing to the score — an apparent improvement caused by missing
+    measurement (#821). Restore the previous value when the detector is
+    recorded as reduced and produced no potential this run.
+    """
+    if not lang_name or not isinstance(coverage, dict):
+        return
+    merged = state.setdefault("potentials", {}).setdefault(lang_name, {})
+    for detector, record in coverage.items():
+        if (
+            isinstance(record, dict)
+            and record.get("status") == "reduced"
+            and detector not in potentials
+            and detector in prev_lang_potentials
+        ):
+            merged[detector] = prev_lang_potentials[detector]
+
+
+def _sync_scan_history_scores(
+    state: dict,
+    *,
+    subjective_integrity_target: float | None,
+) -> None:
+    """Rewrite the just-appended history entry with final adjudicated scores.
+
+    ``merge_scan`` records ``scan_history`` before failed-detector potential
+    restores, holistic staleness marking, and canonical plan reconciliation
+    mutate dispositions — so the entry's scores could diverge from the
+    persisted top-level values and from every view that reads them (#759).
+    """
+    history = state.get("scan_history")
+    if not isinstance(history, list) or not history:
+        return
+    entry = history[-1]
+    if not isinstance(entry, dict):
+        return
+    _recompute_stats(
+        state,
+        scan_path=state.get("scan_path"),
+        subjective_integrity_target=subjective_integrity_target,
+    )
+    entry["strict_score"] = state.get("strict_score")
+    entry["verified_strict_score"] = state.get("verified_strict_score")
+    entry["objective_score"] = state.get("objective_score")
+    entry["overall_score"] = state.get("overall_score")
+    stats = state.get("stats")
+    if isinstance(stats, dict) and "open" in stats:
+        entry["open"] = stats["open"]
+    dimension_scores = state.get("dimension_scores")
+    if dimension_scores:
+        entry["dimension_scores"] = {
+            name: {"score": ds["score"], "strict": ds.get("strict", ds["score"])}
+            for name, ds in dimension_scores.items()
+        }
+
+
+# State keys mutated during scan prep (before the merge) that must be carried
+# into the freshly loaded state when merging under the lock.
+_SCAN_PREP_STATE_KEYS = (
+    "lang_capabilities",
+    "review_cache",
+    "subjective_assessments",
+)
+
+
 def merge_scan_results(
     runtime: ScanRuntime,
     issues: list[dict[str, Any]],
     potentials: dict[str, object],
     codebase_metrics: dict[str, object] | None,
 ) -> ScanMergeResult:
-    """Merge issues into persistent state and return diff + previous score snapshot."""
+    """Merge issues into persistent state and return diff + previous score snapshot.
+
+    The merge runs under ``state_lock``: state is reloaded from disk under an
+    exclusive lock, the scan delta is merged into that fresh state, and the
+    result is saved on lock release. Concurrent commands (another scan, a
+    resolve, a suppress) can no longer be clobbered by a stale read-modify-write.
+    """
     scan_path_rel = rel(str(runtime.path))
-    prev_scan_path = runtime.state.get("scan_path")
-    path_changed = prev_scan_path is not None and prev_scan_path != scan_path_rel
-
-    if not path_changed:
-        prev = score_snapshot(runtime.state)
-    else:
-        prev = ScoreSnapshot(None, None, None, None)
-    prev_dim_scores = (
-        runtime.state.get("dimension_scores", {}) if not path_changed else {}
-    )
-
-    if runtime.lang and runtime.lang.zone_map is not None:
-        runtime.state["zone_distribution"] = runtime.lang.zone_map.counts()
-    _persist_scan_coverage(runtime.state, runtime.lang)
-
     target_score = target_strict_score_from_config(runtime.config)
     runtime.prev_last_scan = str(runtime.state.get("last_scan", "") or "") or None
 
-    diff = merge_scan(
-        runtime.state,
-        issues,
-        options=MergeScanOptions(
-            lang=runtime.lang.name if runtime.lang else None,
-            scan_path=scan_path_rel,
-            force_resolve=getattr(runtime.args, "force_resolve", False),
-            exclude=get_exclusions(),
-            potentials=potentials,
-            codebase_metrics=codebase_metrics,
-            include_slow=runtime.effective_include_slow,
-            ignore=runtime.config.get("ignore", []),
-            subjective_integrity_target=target_score,
-            project_root=str(get_project_root()),
-            zone_map=runtime.lang.zone_map if runtime.lang else None,
-        ),
-    )
-
-    mark_stale_holistic(
-        runtime.state, runtime.config.get("holistic_max_age_days", 30)
-    )
-    save_state(
-        runtime.state,
+    with state_lock(
         runtime.state_path,
         subjective_integrity_target=target_score,
-    )
+    ) as state:
+        # Carry over mutations applied to runtime.state during scan prep so the
+        # locked merge does not silently drop them.
+        prep_state = runtime.state if isinstance(runtime.state, dict) else {}
+        for key in _SCAN_PREP_STATE_KEYS:
+            if key in prep_state and prep_state[key] != state.get(key):
+                state[key] = prep_state[key]
+
+        # When the lock reload is a plan reconstruction (no real persisted
+        # scan state existed), it is derived from the same plan recovery as
+        # the runtime state and is strictly less informed: the runtime work
+        # rows, scan_count and last_scan keep merge evidence authoritative
+        # (reappearance cycles, skip expiry) (#881).
+        if scan_source(state) == "plan_reconstruction":
+            for key in ("work_items", "issues", "scan_count", "last_scan"):
+                if key in prep_state and prep_state[key] != state.get(key):
+                    state[key] = prep_state[key]
+
+        prev_scan_path = state.get("scan_path")
+        path_changed = prev_scan_path is not None and prev_scan_path != scan_path_rel
+
+        if not path_changed:
+            prev = score_snapshot(state)
+        else:
+            prev = ScoreSnapshot(None, None, None, None)
+        prev_dim_scores = (
+            state.get("dimension_scores", {}) if not path_changed else {}
+        )
+
+        if runtime.lang and runtime.lang.zone_map is not None:
+            state["zone_distribution"] = runtime.lang.zone_map.counts()
+        _persist_scan_coverage(state, runtime.lang)
+
+        lang_name = runtime.lang.name if runtime.lang else None
+        prev_lang_potentials = dict(
+            (state.get("potentials") or {}).get(lang_name) or {}
+        )
+
+        diff = merge_scan(
+            state,
+            issues,
+            options=MergeScanOptions(
+                lang=runtime.lang.name if runtime.lang else None,
+                scan_path=scan_path_rel,
+                force_resolve=getattr(runtime.args, "force_resolve", False),
+                canonical_false_positive_ids=load_scan_false_positive_skip_ids(runtime.state_path),
+                exclude=get_exclusions(),
+                potentials=potentials,
+                codebase_metrics=codebase_metrics,
+                include_slow=runtime.effective_include_slow,
+                ignore=runtime.config.get("ignore", []),
+                subjective_integrity_target=target_score,
+                project_root=str(get_project_root()),
+                zone_map=runtime.lang.zone_map if runtime.lang else None,
+                semantic_corrections=(
+                    runtime.lang.semantic_corrections
+                    if runtime.lang is not None and scan_path_rel == "."
+                    else None
+                ),
+            ),
+        )
+
+        _restore_failed_detector_potentials(
+            state,
+            lang_name,
+            coverage=getattr(runtime.lang, "detector_coverage", None),
+            potentials=potentials,
+            prev_lang_potentials=prev_lang_potentials,
+        )
+        mark_stale_holistic(
+            state, runtime.config.get("holistic_max_age_days", 30)
+        )
+        # Persist the raw merged state before the canonical plan reconciliation
+        # rewrites dispositions: the transient reopened row must be recorded
+        # (upstream saves the merge first, then reconciles the plan) (#881).
+        save_state(state, runtime.state_path, subjective_integrity_target=target_score)
+        # Canonical plan dispositions must land on the locked state before
+        # it persists — otherwise the saved file keeps the raw reopened
+        # status and the next merge cannot see the skip (#881).
+        try:
+            locked_plan = load_plan(
+                runtime.state_path.parent / "plan.json"
+                if runtime.state_path is not None
+                else "plan.json"
+            )
+        except PLAN_LOAD_EXCEPTIONS:
+            locked_plan = None
+        if isinstance(locked_plan, dict):
+            reconcile_plan_after_scan(locked_plan, state)
+        _sync_scan_history_scores(
+            state,
+            subjective_integrity_target=target_score,
+        )
+        # Downstream consumers (plan reconcile, reporting, badge) read the
+        # merged state via runtime.state — mutate it in place so existing
+        # references (fixtures, callers holding the pre-merge dict) observe
+        # the merged rows rather than a stale snapshot (#881).
+        if runtime.state is not state and isinstance(runtime.state, dict):
+            runtime.state.clear()
+            runtime.state.update(state)
+        else:
+            runtime.state = state
 
     _clear_needs_rescan_flag(runtime.config)
     runtime.scan_diff = diff
@@ -536,13 +701,13 @@ def persist_reminder_history(
     if not (narrative and "reminder_history" in narrative):
         return
 
-    runtime.state["reminder_history"] = narrative["reminder_history"]
     target_score = target_strict_score_from_config(runtime.config)
-    save_state(
-        runtime.state,
+    with state_lock(
         runtime.state_path,
         subjective_integrity_target=target_score,
-    )
+    ) as state:
+        state["reminder_history"] = narrative["reminder_history"]
+        runtime.state = state
 
 
 __all__ = [

@@ -17,6 +17,7 @@ from desloppify.languages.go.extractors import (
 
 def _write_go_file(tmp_path: Path, name: str, content: str) -> str:
     f = tmp_path / name
+    f.parent.mkdir(parents=True, exist_ok=True)
     f.write_text(content)
     return str(f)
 
@@ -55,7 +56,25 @@ func (s *Server) Start() error {
     )
     funcs = extract_go_functions(filepath)
     assert len(funcs) == 1
-    assert funcs[0].name == "Start"
+    assert funcs[0].name == "server.Server.Start"
+
+
+def test_extract_method_names_package_receiver_qualified(tmp_path):
+    """#641: same method name on same-named types in different packages are
+    unrelated contracts — the qualified name must keep them apart."""
+    for pkg, sig in (
+        ("alpha", "func (r Resource) Close() { _ = r }"),
+        ("beta", "func (r Resource) Close(ctx context.Context) error { _ = r; return ctx.Err() }"),
+        ("gamma", "func (r Resource) Close() error { _ = r; return nil }"),
+    ):
+        filepath = _write_go_file(
+            tmp_path / pkg,
+            "resource.go",
+            f"package {pkg}\n\ntype Resource struct{{}}\n\n{sig}\n",
+        )
+        funcs = extract_go_functions(filepath)
+        assert len(funcs) == 1
+        assert funcs[0].name == f"{pkg}.Resource.Close"
 
 
 def test_extract_generics(tmp_path):

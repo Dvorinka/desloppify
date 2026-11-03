@@ -7,12 +7,12 @@ from types import SimpleNamespace
 import desloppify.engine._plan.auto_cluster_sync_issue as auto_cluster_sync_mod
 import desloppify.engine._plan.constants as plan_constants_mod
 import desloppify.engine._plan.refresh_lifecycle as refresh_lifecycle_mod
-import desloppify.engine._plan.sync as sync_pkg_mod
 import desloppify.engine._plan.scan_issue_reconcile as scan_reconcile_mod
-import desloppify.engine._plan.sync.review_import as reconcile_import_mod
 import desloppify.engine._plan.schema.helpers as schema_helpers_mod
+import desloppify.engine._plan.sync as sync_pkg_mod
 import desloppify.engine._plan.sync.auto_prune as sync_auto_prune_mod
 import desloppify.engine._plan.sync.context as sync_context_mod
+import desloppify.engine._plan.sync.review_import as reconcile_import_mod
 import desloppify.engine._plan.sync.triage_start_policy as triage_start_policy_mod
 import desloppify.engine._plan.sync.workflow as sync_workflow_mod
 import desloppify.engine._plan.triage.dismiss as triage_dismiss_mod
@@ -233,10 +233,11 @@ def test_reconcile_review_import_prunes_stale_triage_recovery_metadata(
     assert plan["epic_triage_meta"]["undispositioned_issue_count"] == 1
 
 
-def test_reconcile_module_exports_scan_reconcile_only() -> None:
+def test_reconcile_module_exports_scan_reconcile_api() -> None:
     assert scan_reconcile_mod.__all__ == [
         "ReconcileResult",
         "reconcile_plan_after_scan",
+        "active_false_positive_skip_ids",
     ]
     assert not hasattr(scan_reconcile_mod, "sync_plan_after_review_import")
     assert not hasattr(scan_reconcile_mod, "ReviewImportSyncResult")
@@ -503,6 +504,55 @@ def test_sync_workflow_helpers_inject_expected_items(monkeypatch) -> None:
 
     monkeypatch.setattr(sync_workflow_mod.stale_policy_mod, "current_unscored_ids", lambda *_a, **_k: {"s"})
     assert sync_workflow_mod._no_unscored(state, policy=None) is False
+
+
+def test_sync_create_plan_prunes_stale_prompt_after_completed_triage() -> None:
+    plan = {
+        "queue_order": ["workflow::create-plan", "unused::still-open"],
+        "epic_triage_meta": {
+            "last_completed_at": "2026-10-12T00:00:00Z",
+            "triaged_ids": ["review::already-resolved"],
+        },
+    }
+    state = {
+        "issues": {
+            "unused::still-open": {
+                "id": "unused::still-open",
+                "status": "open",
+                "detector": "unused",
+                "file": "src/a.py",
+                "summary": "Still-open mechanical finding",
+                "tier": 3,
+                "confidence": "medium",
+            }
+        },
+        "scan_count": 5,
+        "last_scan": "2026-10-12T00:00:00Z",
+        "dimension_scores": {},
+    }
+    policy = SimpleNamespace(unscored_ids=set(), has_objective_backlog=True)
+
+    result = sync_workflow_mod.sync_create_plan_needed(plan, state, policy=policy)
+
+    assert result.pruned == ["workflow::create-plan"]
+    assert plan["queue_order"] == ["unused::still-open"]
+    plan["plan_start_scores"] = {"strict": 80.0}
+    plan["refresh_state"] = {
+        "postflight_scan_completed_at_scan_count": 5,
+        "lifecycle_phase": "execute",
+    }
+    queue = snapshot_mod.build_queue_snapshot(state, plan=plan)
+    assert [item["id"] for item in queue.execution_items] == ["unused::still-open"]
+
+
+def test_sync_create_plan_preserves_initial_objective_only_planning() -> None:
+    plan = {"queue_order": []}
+    state = {"issues": {"unused::first-cycle": {"status": "open", "detector": "unused"}}}
+    policy = SimpleNamespace(unscored_ids=set(), has_objective_backlog=True)
+
+    result = sync_workflow_mod.sync_create_plan_needed(plan, state, policy=policy)
+
+    assert result.injected == ["workflow::create-plan"]
 
 
 def test_sync_import_scores_prunes_stale_workflow_after_trusted_import() -> None:
@@ -830,6 +880,53 @@ def test_queue_snapshot_keeps_executing_real_queue_items_before_postflight_scan(
 
     assert snapshot.phase == refresh_lifecycle_mod.LIFECYCLE_PHASE_EXECUTE
     assert [item["id"] for item in snapshot.execution_items] == ["unused::a"]
+
+
+def test_queue_snapshot_skipped_subjective_item_does_not_mask_execution() -> None:
+    state = {
+        "issues": {
+            "unused::a": {
+                "id": "unused::a",
+                "detector": "unused",
+                "status": "open",
+                "file": "src/a.py",
+                "tier": 1,
+                "confidence": "high",
+                "summary": "unused import",
+                "detail": {},
+            }
+        },
+        "dimension_scores": {
+            "Naming quality": {
+                "score": 70.0,
+                "strict": 70.0,
+                "failing": 1,
+                "detectors": {
+                    "subjective_assessment": {"dimension_key": "naming_quality"}
+                },
+            }
+        },
+        "subjective_assessments": {"naming_quality": {"score": 70.0}},
+    }
+    plan = {
+        "queue_order": ["unused::a", "subjective::naming_quality"],
+        "skipped": {
+            "subjective::naming_quality": {
+                "issue_id": "subjective::naming_quality",
+                "kind": "temporary",
+            }
+        },
+        "plan_start_scores": {"strict": 80.0},
+        "refresh_state": {"lifecycle_phase": "plan"},
+    }
+
+    snapshot = snapshot_mod.build_queue_snapshot(state, plan=plan)
+
+    assert snapshot.phase == refresh_lifecycle_mod.LIFECYCLE_PHASE_EXECUTE
+    assert [item["id"] for item in snapshot.execution_items] == ["unused::a"]
+    assert "subjective::naming_quality" not in {
+        item["id"] for item in snapshot.backlog_items
+    }
 
 
 def test_queue_snapshot_does_not_execute_autofix_cluster_without_queue_ownership() -> None:
@@ -1247,3 +1344,83 @@ def test_triage_playbook_commands_cover_runner_and_stage_validation() -> None:
         assert "Unsupported triage stage" in str(exc)
     else:  # pragma: no cover
         raise AssertionError("Expected invalid stage to raise")
+
+
+def test_build_subjective_items_suppressed_when_scan_found_no_production_files() -> None:
+    """#700: a zero-source-file or config-only scan must not queue
+    subjective review work that can never be fulfilled."""
+    base_state = {
+        "dimension_scores": {
+            "Naming quality": {
+                "score": 0.0,
+                "strict": 0.0,
+                "failing": 0,
+                "detectors": {
+                    "subjective_assessment": {"dimension_key": "naming_quality"}
+                },
+            }
+        },
+    }
+    control = {
+        **base_state,
+        "zone_distribution": {"production": 5, "test": 2},
+    }
+    assert [
+        item["id"] for item in synthetic_mod.build_subjective_items(control, {})
+    ] == ["subjective::naming_quality"]
+
+    # Misdetected language: file_finder returned nothing at all.
+    empty = {
+        **base_state,
+        "lang": "typescript",
+        "codebase_metrics": {"typescript": {"total_files": 0}},
+    }
+    assert synthetic_mod.build_subjective_items(empty, {}) == []
+
+    # Config-only package: files exist but none are production zone.
+    config_only = {**base_state, "zone_distribution": {"config": 1}}
+    assert synthetic_mod.build_subjective_items(config_only, {}) == []
+
+    # Unknown signal (older states) keeps prior behavior.
+    assert [
+        item["id"] for item in synthetic_mod.build_subjective_items(base_state, {})
+    ] == ["subjective::naming_quality"]
+
+
+def test_warn_no_reviewable_files_covers_auto_detect_and_non_production(
+    capsys, tmp_path,
+) -> None:
+    """#700: scan warns loudly on any zero-reviewable-file scan, not only
+    when --lang was passed explicitly."""
+    from desloppify.app.commands.scan.helpers import warn_no_reviewable_files
+
+    lang = SimpleNamespace(name="typescript")
+
+    warn_no_reviewable_files(
+        SimpleNamespace(lang=None), lang, tmp_path, {"total_files": 0}
+    )
+    out = capsys.readouterr().out
+    assert "No typescript source files found" in out
+    assert "--lang" in out
+    assert "vacuous" in out
+
+    # Files exist but none are production zone.
+    warn_no_reviewable_files(
+        SimpleNamespace(lang=None),
+        lang,
+        tmp_path,
+        {"total_files": 3},
+        zone_map=SimpleNamespace(production_count=lambda: 0),
+    )
+    out = capsys.readouterr().out
+    assert "none are production source" in out
+
+    # Production files present → silent.
+    warn_no_reviewable_files(
+        SimpleNamespace(lang=None),
+        lang,
+        tmp_path,
+        {"total_files": 3},
+        zone_map=SimpleNamespace(production_count=lambda: 3),
+    )
+    assert capsys.readouterr().out == ""

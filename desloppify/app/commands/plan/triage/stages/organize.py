@@ -4,17 +4,14 @@ from __future__ import annotations
 
 import argparse
 
+from desloppify.base.exception_sets import CommandError
 from desloppify.base.output.terminal import colorize
 
-from ..display.dashboard import print_organize_result
 from ..completion_flow import count_log_activity_since
+from ..display.dashboard import print_organize_result
 from ..review_coverage import open_review_ids_from_state
-from ..stage_queue import has_triage_in_queue
 from ..services import TriageServices, default_triage_services
-from ..validation.stage_policy import (
-    ReflectAutoConfirmDeps,
-    auto_confirm_reflect_for_organize,
-)
+from ..stage_queue import has_triage_in_queue
 from ..validation.organize_policy import (
     _clusters_enriched_or_error,
     _manual_clusters_or_error,
@@ -23,7 +20,11 @@ from ..validation.organize_policy import (
     _validate_organize_against_ledger_or_error,
     validate_backlog_promotions_executed,
 )
-from ..validation.stage_policy import require_prerequisite
+from ..validation.stage_policy import (
+    ReflectAutoConfirmDeps,
+    auto_confirm_reflect_for_organize,
+    require_prerequisite,
+)
 from .records import record_organize_stage
 
 
@@ -125,7 +126,9 @@ def _validate_organize_submission(
     ):
         return None
 
-    manual_clusters = _manual_clusters_or_error(plan, open_review_ids=open_review_ids)
+    manual_clusters = _manual_clusters_or_error(
+        plan, open_review_ids=open_review_ids, state=state
+    )
     if manual_clusters is None:
         return None
     if not _clusters_enriched_or_error(plan, state):
@@ -229,7 +232,7 @@ def _cmd_stage_organize(
         is_reuse = True
 
     if not _require_reflect_stage_for_organize(stages):
-        return
+        raise CommandError("Cannot organize: stage not recorded.", exit_code=1)
 
     runtime = resolved_services.command_runtime(args)
     state = runtime.state
@@ -246,7 +249,7 @@ def _cmd_stage_organize(
         services=resolved_services,
     )
     if validated is None:
-        return
+        raise CommandError("Cannot organize: stage not recorded.", exit_code=1)
     manual_clusters, normalized_report = validated
     cleared, stages = _persist_organize_stage(
         plan=plan,

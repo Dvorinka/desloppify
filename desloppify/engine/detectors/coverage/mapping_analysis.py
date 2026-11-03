@@ -104,7 +104,12 @@ def analyze_test_quality(
             )
             is_placeholder = False
 
-        if test_functions == 0:
+        if test_functions == 0 and assertions > 0:
+            # Assertion-shaped calls but no recognized test functions —
+            # probably a custom harness (#892). Unknown beats a confident
+            # "no tests" claim.
+            quality = "unknown"
+        elif test_functions == 0:
             quality = "no_tests"
         elif assertions == 0:
             quality = "assertion_free"
@@ -184,6 +189,7 @@ def get_test_files_for_prod(
     *,
     parse_test_imports_fn: Callable[[str, set[str], dict[str, str], str], set[str]],
     map_test_to_source_fn: Callable[[str, set[str], str], str | None],
+    map_test_to_sources_fn: Callable[[str, set[str], str], set[str]] | None = None,
     project_root: str,
 ) -> list[str]:
     """Find which test files exercise a given production file."""
@@ -217,6 +223,11 @@ def get_test_files_for_prod(
             continue
         if map_test_to_source_fn(test_path, {prod_file}, lang_name) == prod_file:
             result.append(test_path)
+            continue
+        if map_test_to_sources_fn is not None and prod_file in map_test_to_sources_fn(
+            test_path, {prod_file}, lang_name
+        ):
+            result.append(test_path)
     return result
 
 
@@ -244,9 +255,42 @@ def build_test_import_index(
     return index
 
 
+def build_production_test_index(
+    test_files: set[str],
+    production_files: set[str],
+    graph: dict,
+    lang_name: str,
+    parsed_imports_by_test: dict[str, set[str]],
+    *,
+    map_test_to_source_fn: Callable[[str, set[str], str], str | None],
+) -> dict[str, list[str]]:
+    """Build production-file -> direct-test mapping in one pass over tests."""
+    related: dict[str, list[str]] = {}
+    for test_path in sorted(test_files):
+        covered = set(parsed_imports_by_test.get(test_path, set()))
+        entry = graph.get(test_path)
+        if entry:
+            covered.update(
+                imported
+                for imported in entry.get("imports", set())
+                if imported in production_files
+            )
+        named_source = map_test_to_source_fn(
+            test_path,
+            production_files,
+            lang_name,
+        )
+        if named_source is not None:
+            covered.add(named_source)
+        for production_file in covered:
+            related.setdefault(production_file, []).append(test_path)
+    return related
+
+
 
 __all__ = [
     "analyze_test_quality",
+    "build_production_test_index",
     "build_test_import_index",
     "get_test_files_for_prod",
     "transitive_coverage",

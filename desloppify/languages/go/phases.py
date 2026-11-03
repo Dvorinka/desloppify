@@ -66,4 +66,7 @@ def phase_structural(path: Path, lang: LangRuntimeContract) -> tuple[list[Issue]
         lang,
         complexity_signals=GO_COMPLEXITY_SIGNALS,
         log_fn=log,
+        # Go colocates *_test.go with the package; counting them toward the
+        # production overload threshold flags healthy packages (#643).
+        flat_dirs_filter=lambda f: not f.endswith("_test.go"),
     )

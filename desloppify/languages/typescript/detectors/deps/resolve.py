@@ -53,7 +53,7 @@ def find_tsconfig_root(scan_path: Path, project_root: Path) -> Path:
 
 def parse_tsconfig_paths(project_root: Path) -> dict[str, str]:
     """Parse tsconfig paths from disk. Internal — use ``load_tsconfig_paths``."""
-    fallback = {"@/": "src/"}
+    fallback = {"@/": "src/", "~/": "src/"}
 
     for name in ("tsconfig.json", "tsconfig.app.json", "jsconfig.json"):
         config_path = project_root / name
@@ -70,7 +70,9 @@ def parse_tsconfig_paths(project_root: Path) -> dict[str, str]:
             continue
         result = extract_paths(data, project_root)
         if result is not None:
-            return result
+            # Undeclared @/ ~/ prefixes follow the src/ convention; declared
+            # mappings always win.
+            return {**fallback, **result}
         extends = data.get("extends")
         if isinstance(extends, str) and not extends.startswith("@"):
             parent_path = (config_path.parent / extends).resolve()
@@ -81,7 +83,7 @@ def parse_tsconfig_paths(project_root: Path) -> dict[str, str]:
                     return fallback
                 parent_result = extract_paths(parent_data, parent_path.parent)
                 if parent_result is not None:
-                    return parent_result
+                    return {**fallback, **parent_result}
         return fallback
 
     return fallback
@@ -164,6 +166,131 @@ def resolve_alias(
     return None
 
 
+_EXPORT_CONDITIONS = ("types", "import", "module", "browser", "node", "default")
+
+
+def _pick_export_condition(node: Any) -> str | None:
+    """Pick a target from an exports condition map/list/string."""
+    if isinstance(node, str):
+        return node
+    if isinstance(node, list):
+        for item in node:
+            picked = _pick_export_condition(item)
+            if picked is not None:
+                return picked
+        return None
+    if isinstance(node, dict):
+        for condition in _EXPORT_CONDITIONS:
+            if condition in node:
+                picked = _pick_export_condition(node[condition])
+                if picked is not None:
+                    return picked
+        for value in node.values():
+            picked = _pick_export_condition(value)
+            if picked is not None:
+                return picked
+    return None
+
+
+def _resolve_exports(exports: Any, subpath: str) -> str | None:
+    """Resolve a package.json ``exports`` field for ``.`` or ``./sub``."""
+    if isinstance(exports, str):
+        return exports if subpath == "." else None
+    if not isinstance(exports, dict):
+        return None
+    if exports and not any(key.startswith(".") for key in exports):
+        # Root is a condition map, not a subpath map.
+        return _pick_export_condition(exports) if subpath == "." else None
+    if subpath in exports:
+        return _pick_export_condition(exports[subpath])
+    for pattern, value in exports.items():
+        if "*" not in pattern:
+            continue
+        prefix, _, suffix = pattern.partition("*")
+        if not subpath.startswith(prefix):
+            continue
+        if suffix and not subpath.endswith(suffix):
+            continue
+        capture = subpath[len(prefix) : len(subpath) - len(suffix) if suffix else None]
+        target = _pick_export_condition(value)
+        if isinstance(target, str):
+            return target.replace("*", capture)
+    return None
+
+
+def _package_name(spec: str) -> str | None:
+    """Return the package-name portion of a bare specifier."""
+    parts = spec.split("/")
+    if spec.startswith("@"):
+        name = "/".join(parts[:2]) if len(parts) >= 2 else None
+    else:
+        name = parts[0] or None
+    if not name or ".." in parts:
+        return None
+    return name
+
+
+def resolve_package_specifier(
+    spec: str,
+    importer_dir: Path,
+    scope_root: Path,
+) -> Path | None:
+    """Resolve a bare import through node_modules package ``exports``.
+
+    Follows symlinks (linked workspace packages) and honors subpath,
+    conditional, and wildcard exports. Returns the target only when it
+    resolves inside ``scope_root`` — third-party packages outside the scan
+    stay out of the graph. ``None`` when the package is absent, the subpath
+    is blocked, or the target is out of scope.
+    """
+    name = _package_name(spec)
+    if name is None:
+        return None
+    rest = spec[len(name) :]
+    subpath = "." if not rest else "." + rest
+    scope = scope_root.resolve()
+
+    directory = importer_dir.resolve()
+    while True:
+        pkg_dir = directory / "node_modules" / name
+        if pkg_dir.is_dir():
+            try:
+                pkg_dir = pkg_dir.resolve()
+            except OSError:
+                pass
+            data: dict[str, Any] = {}
+            pkg_json = pkg_dir / "package.json"
+            if pkg_json.is_file():
+                try:
+                    parsed = json.loads(pkg_json.read_text(errors="replace"))
+                    if isinstance(parsed, dict):
+                        data = parsed
+                except (json.JSONDecodeError, OSError) as exc:
+                    log_best_effort_failure(
+                        logger, f"parse package manifest {pkg_json}", exc
+                    )
+            if "exports" in data:
+                rel_target = _resolve_exports(data["exports"], subpath)
+                if rel_target is None:
+                    return None  # blocked subpath — stop, per node semantics
+                target = pkg_dir / rel_target
+            elif subpath == ".":
+                main = data.get("main")
+                target = pkg_dir / main if isinstance(main, str) else pkg_dir / "index"
+            else:
+                target = pkg_dir / rest.lstrip("/")
+            try:
+                resolved = target.resolve()
+            except OSError:
+                return None
+            if resolved == scope or scope in resolved.parents:
+                return resolved
+            return None
+        if directory == directory.parent:
+            return None
+        directory = directory.parent
+
+
 def resolve_module(
     module_path: str,
     filepath: str,
@@ -186,6 +313,18 @@ def resolve_module(
         target = (source_dir / module_path).resolve()
     else:
         target = resolve_alias(module_path, tsconfig_paths, project_root)
+        if target is None:
+            # Bare specifier with no tsconfig alias — a linked workspace
+            # package may still resolve through node_modules exports.
+            relative_root = source_root or project_root
+            importer_dir = (
+                Path(filepath).parent
+                if Path(filepath).is_absolute()
+                else (relative_root / filepath).parent
+            )
+            target = resolve_package_specifier(
+                module_path, importer_dir, relative_root
+            )
 
     if target is None:
         return

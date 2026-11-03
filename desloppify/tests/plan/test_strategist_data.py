@@ -143,6 +143,37 @@ def test_churn_and_rework_helpers_surface_expected_entries() -> None:
     assert loops[0].reopen_count == 2
 
 
+def test_investment_matches_scored_dimension_names() -> None:
+    work_items = dict([
+        _review_issue("review::a", dimension="logic_clarity", status="fixed"),
+        _review_issue("review::b", dimension="Logic clarity", status="fixed"),
+        ("coverage::c", {"detector": "test_coverage", "status": "fixed"}),
+    ])
+    trajectories = dimension_trajectories(
+        [], {"Logic clarity": {"strict": 90}, "Test health": {"strict": 80}}, work_items,
+    )
+    assert trajectories["Logic clarity"].recent_investment == 2
+    assert trajectories["Test health"].recent_investment == 1
+
+
+def test_backlog_groups_registered_detectors_and_preserves_custom_dimensions() -> None:
+    work_items = dict([
+        _review_issue("review::a", dimension="logic_clarity"),
+        _review_issue("review::b", dimension="Logic clarity"),
+        _review_issue("review::custom", dimension="project-specific quality"),
+        ("coverage::c", {"detector": "test_coverage", "status": "open"}),
+        ("smells::d", {"detector": "smells", "status": "open", "detail": None}),
+        ("queue::e", {"detector": "subjective_review", "status": "open",
+                       "detail": {"dimension_name": "Test strategy"}}),
+        ("unknown::f", {"detector": "unregistered", "status": "open"}),
+    ])
+    inventory = lifecycle_inventory({"work_items": work_items}, {})
+    assert inventory["backlog_by_dimension"] == {
+        "Logic clarity": 2, "Test health": 1, "Code quality": 1,
+        "Test strategy": 1, "project-specific quality": 1, "unknown": 1,
+    }
+
+
 def test_completed_cluster_summary_extracts_from_progression_and_plan_fallback() -> None:
     summaries = completed_cluster_summary_from_progression(
         [
@@ -227,10 +258,13 @@ def test_execution_inventory_commit_history_and_collect_strategist_input() -> No
     assert inventory["deferred_count"] == 1
     assert inventory["prioritized_ids"] == ["review::src/a.py::1"]
 
-    execution = execution_pattern_analysis(plan["execution_log"])
-    assert execution.total_resolved == 2
-    assert execution.total_done == 1
-    assert execution.total_skipped == 1
+    execution = execution_pattern_analysis(plan["execution_log"], plan=plan)
+    assert execution.resolved_issues == 2
+    assert execution.done_issues == 1
+    assert execution.skipped_issues == 1
+    assert execution.resolved_operations == 1
+    assert execution.done_operations == 1
+    assert execution.skipped_operations == 1
 
     commits = commit_history_analysis(plan["commit_log"])
     assert commits.total_commits == 1
@@ -252,3 +286,121 @@ def test_execution_inventory_commit_history_and_collect_strategist_input() -> No
     assert strategist_input.completed_clusters[0].name == "cluster-a"
     assert strategist_input.commit_history.total_commits == 1
     assert strategist_input.prioritized_ids == ["review::src/a.py::1"]
+
+
+def test_dimension_trajectories_windows_recent_investment() -> None:
+    """#883: recent_investment counts only resolutions inside the score
+    window — lifetime history and untimestamped resolutions do not."""
+    history = [
+        {
+            "timestamp": "2026-03-02T00:00:00+00:00",
+            "dimension_scores": {"Test health": {"strict": 70.0}},
+        }
+    ]
+    items = {
+        "strategy::old-evidence-audit": {
+            "detector": "strategy",
+            "status": "fixed",
+            "resolved_at": "2000-01-01T00:00:00+00:00",
+            "work_item_kind": "workflow_action",
+            "detail": {"dimension": "Test health"},
+        },
+        "review::b.py::2": {
+            "detector": "review",
+            "status": "fixed",
+            "resolved_at": "2026-03-03T00:00:00+00:00",
+            "detail": {"dimension": "Test health"},
+        },
+        "review::c.py::3": {
+            "detector": "review",
+            "status": "fixed",
+            "detail": {"dimension": "Test health"},
+        },
+    }
+    result = dimension_trajectories(
+        history, {"Test health": {"strict": 70.0}}, items, window=1
+    )["Test health"]
+    assert result.strict_scores == [70.0]
+    # The 2000 resolution and the untimestamped one are not demonstrably
+    # recent; only the in-window resolution counts.
+    assert result.recent_investment == 1
+
+    # Widening the window's time span admits older resolutions.
+    history_wider = [
+        {
+            "timestamp": "1999-12-31T00:00:00+00:00",
+            "dimension_scores": {"Test health": {"strict": 60.0}},
+        },
+        *history,
+    ]
+    wider = dimension_trajectories(
+        history_wider, {"Test health": {"strict": 70.0}}, items, window=2
+    )["Test health"]
+    assert wider.recent_investment == 2
+
+
+def test_strategist_dimension_map_and_done_cluster_fallback() -> None:
+    """#900: mechanical findings attribute via detector→dimension wiring;
+    execution_status=done clusters surface in completed_clusters."""
+    dim_scores = {
+        "Code quality": {
+            "strict": 80.0,
+            "detectors": {"unused": {"potential": 10}},
+        }
+    }
+    items = {
+        "unused::a.py::f": {
+            "detector": "unused",
+            "status": "open",
+            "file": "a.py",
+            "detail": {},
+        },
+    }
+    inv = lifecycle_inventory(
+        {"work_items": items, "dimension_scores": dim_scores},
+        {"queue_order": [], "skipped": {}},
+    )
+    assert inv["backlog_by_dimension"] == {"Code quality": 1}
+
+    plan = {
+        "clusters": {
+            "dead-code": {
+                "execution_status": "done",
+                "description": "Remove dead paths",
+                "issue_ids": ["a", "b", "c"],
+            },
+            "naming": {"execution_status": "in_progress", "issue_ids": ["d"]},
+        }
+    }
+    summaries = completed_cluster_summary_from_plan(plan, {})
+    assert [s.name for s in summaries] == ["dead-code"]
+    assert summaries[0].issue_count == 3
+
+
+def test_execution_patterns_separate_operations_from_issues() -> None:
+    """#900: cluster fronts, globs, and marker ids are not issue counts."""
+    plan = {
+        "clusters": {
+            "coverage": {
+                "name": "coverage",
+                "auto": False,
+                "issue_ids": ["smells::a.py::1", "smells::b.py::2", "smells::c.py::3"],
+            },
+        },
+    }
+    log = [
+        {"timestamp": "3026-03-01T00:00:00+00:00", "action": "done", "issue_ids": ["coverage"], "cluster_name": "coverage"},
+        {"timestamp": "3026-03-02T00:00:00+00:00", "action": "done", "issue_ids": ["smells::*", "smells::a.py::1"]},
+        {"timestamp": "3026-03-03T00:00:00+00:00", "action": "resolve", "issue_ids": ["subjective::naming_quality", "review::x.py::1"]},
+        {"timestamp": "3026-03-04T00:00:00+00:00", "action": "skip", "issue_ids": ["triage::observe", "smells::d.py::4"]},
+    ]
+    result = execution_pattern_analysis(log, plan=plan)
+    # Cluster front expands to its three members; the glob is an operation,
+    # not an issue id; markers never count as work; ids dedupe across
+    # entries (smells::a.py::1 counted once).
+    assert result.done_operations == 2
+    assert result.done_issues == 3
+    assert result.resolved_operations == 1
+    assert result.resolved_issues == 1
+    assert result.skipped_operations == 1
+    assert result.skipped_issues == 1

@@ -41,6 +41,32 @@ def _detect_high_cyclomatic_complexity(
     return []
 
 
+def _is_mutable_global_value(value: ast.AST) -> bool:
+    """Whether a module-level initializer yields a mutable global.
+
+    Literal containers and unknown constructor calls are mutable. Known
+    immutable constructors (``re.compile``, ``frozenset``, ``tuple``) are
+    not, and ``MappingProxyType`` is immutable only over a fresh literal
+    whose own values are immutable — a proxy over a named mapping aliases
+    mutable state.
+    """
+    if isinstance(value, ast.List | ast.Dict | ast.Set):
+        return True
+    if not isinstance(value, ast.Call):
+        return False
+    func = value.func
+    name = func.attr if isinstance(func, ast.Attribute) else getattr(func, "id", None)
+    if name == "MappingProxyType":
+        if len(value.args) == 1 and isinstance(value.args[0], ast.Dict):
+            return any(
+                _is_mutable_global_value(element) for element in value.args[0].values
+            )
+        return True
+    if name in {"compile", "frozenset", "tuple"}:
+        return False
+    return True
+
+
 def _detect_lru_cache_mutable(
     filepath: str,
     node: ast.AST,
@@ -71,18 +97,14 @@ def _detect_lru_cache_mutable(
     for stmt in tree.body:
         if isinstance(stmt, ast.Assign):
             for target in stmt.targets:
-                if isinstance(target, ast.Name) and isinstance(
-                    stmt.value, ast.List | ast.Dict | ast.Set | ast.Call
-                ):
+                if isinstance(target, ast.Name) and _is_mutable_global_value(stmt.value):
                     module_mutables.add(target.id)
         elif (
             isinstance(stmt, ast.AnnAssign)
             and stmt.target
             and isinstance(stmt.target, ast.Name)
         ):
-            if stmt.value and isinstance(
-                stmt.value, ast.List | ast.Dict | ast.Set | ast.Call
-            ):
+            if stmt.value and _is_mutable_global_value(stmt.value):
                 module_mutables.add(stmt.target.id)
 
     for child in ast.walk(node):

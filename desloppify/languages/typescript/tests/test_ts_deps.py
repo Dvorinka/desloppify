@@ -29,6 +29,55 @@ def _write(tmp_path: Path, name: str, content: str) -> Path:
 
 
 class TestBuildDepGraph:
+    @pytest.mark.parametrize("extension", ["ts", "svelte", "vue", "astro"])
+    def test_root_scan_uses_each_importers_nearest_config(self, tmp_path, extension):
+        """Sibling packages' identical aliases must not resolve via the root config."""
+        _write(
+            tmp_path,
+            "tsconfig.json",
+            json.dumps(
+                {
+                    "compilerOptions": {"paths": {"@/*": ["./root/*"]}},
+                }
+            ),
+        )
+        root_target = _write(tmp_path, "root/value.ts", "export const value = 0;\n")
+        targets = []
+        sources = []
+        for package, directory in [("one", "src"), ("two", "lib")]:
+            _write(
+                tmp_path,
+                f"packages/{package}/tsconfig.json",
+                json.dumps(
+                    {
+                        "compilerOptions": {
+                            "baseUrl": directory,
+                            "paths": {"@/*": ["./*"]},
+                        },
+                    }
+                ),
+            )
+            target = _write(
+                tmp_path,
+                f"packages/{package}/{directory}/value.ts",
+                "export const value = 1;\n",
+            )
+            source = _write(
+                tmp_path,
+                f"packages/{package}/{directory}/nested/main.{extension}",
+                "import { value } from '@/value';\nexport const result = value;\n",
+            )
+            targets.append(str(target.resolve()))
+            sources.append(str(source.resolve()))
+
+        graph = deps_detector_mod.build_dep_graph(tmp_path)
+
+        for source, target in zip(sources, targets, strict=True):
+            assert graph[source]["imports"] == {target}
+            assert graph[target]["importers"] == {source}
+            assert graph[target]["importer_count"] == 1
+        assert not graph.get(str(root_target.resolve()), {}).get("importers")
+
     def test_simple_relative_import(self, tmp_path):
         """Graph captures a simple relative import between two files."""
 
@@ -77,6 +126,26 @@ class TestBuildDepGraph:
         app_key = str((tmp_path / "app.ts").resolve())
         helpers_key = str((tmp_path / "helpers.ts").resolve())
         assert helpers_key in graph[app_key]["imports"]
+
+    def test_tilde_specifier_resolves_via_src_convention(self, tmp_path):
+        """#858: `~/x` resolves to `src/x` when no tsconfig paths declare it."""
+
+        _write(
+            tmp_path,
+            "tsconfig.json",
+            json.dumps({"compilerOptions": {"paths": {"@/*": ["./src/*"]}}}),
+        )
+        _write(tmp_path, "src/components/Profile.tsx", "export const P = 1;\n")
+        _write(
+            tmp_path,
+            "src/test/interactions.test.tsx",
+            "import { P } from '~/components/Profile';\n",
+        )
+
+        graph = deps_detector_mod.build_dep_graph(tmp_path)
+        test_key = str((tmp_path / "src/test/interactions.test.tsx").resolve())
+        profile_key = str((tmp_path / "src/components/Profile.tsx").resolve())
+        assert profile_key in graph[test_key]["imports"]
 
     def test_index_file_resolution(self, tmp_path):
         """Graph resolves directory imports to index.ts files."""
@@ -288,7 +357,7 @@ class TestTsconfigPaths:
             json.dumps({"compilerOptions": {"paths": {"@/*": ["./src/*"]}}}),
         )
         paths = deps_detector_mod._load_tsconfig_paths(tmp_path)
-        assert paths == {"@/": "src/"}
+        assert paths == {"@/": "src/", "~/": "src/"}
 
     def test_multiple_aliases(self, tmp_path):
         """Multiple path aliases all resolve correctly."""
@@ -349,13 +418,13 @@ class TestTsconfigPaths:
     def test_missing_fallback(self, tmp_path):
         """No tsconfig at all returns @/ → src/ fallback."""
         paths = deps_detector_mod._load_tsconfig_paths(tmp_path)
-        assert paths == {"@/": "src/"}
+        assert paths == {"@/": "src/", "~/": "src/"}
 
     def test_malformed_json(self, tmp_path):
         """Malformed JSON gracefully falls back."""
         _write(tmp_path, "tsconfig.json", "{ invalid json !!!")
         paths = deps_detector_mod._load_tsconfig_paths(tmp_path)
-        assert paths == {"@/": "src/"}
+        assert paths == {"@/": "src/", "~/": "src/"}
 
     def test_tsconfig_no_paths_field(self, tmp_path):
         """tsconfig exists but has no paths field → fallback."""
@@ -363,7 +432,7 @@ class TestTsconfigPaths:
             tmp_path, "tsconfig.json", json.dumps({"compilerOptions": {"strict": True}})
         )
         paths = deps_detector_mod._load_tsconfig_paths(tmp_path)
-        assert paths == {"@/": "src/"}
+        assert paths == {"@/": "src/", "~/": "src/"}
 
     def test_alias_resolver_uses_tsconfig(self, tmp_path):
         """deps_detector_mod.ts_alias_resolver() respects tsconfig paths."""
@@ -424,7 +493,7 @@ class TestTsconfigPaths:
             ),
         )
         paths = deps_detector_mod._load_tsconfig_paths(tmp_path)
-        assert paths == {"@/": "src/"}
+        assert paths == {"@/": "src/", "~/": "src/"}
 
 
 # ── Framework file support ──────────────────────────────────────
@@ -671,7 +740,9 @@ class TestAliasScanPath:
         orphan_files = {o["file"] for o in orphans}
         assert core_key not in orphan_files
 
-    def test_subdirectory_tsconfig_relative_imports_use_project_file_root(self, tmp_path):
+    def test_subdirectory_tsconfig_relative_imports_use_project_file_root(
+        self, tmp_path
+    ):
         """Relative imports should not double the tsconfig subdirectory prefix."""
         pkg = tmp_path / "packages" / "frontend" / "app"
         _write(pkg, "tsconfig.json", json.dumps({"compilerOptions": {}}))
@@ -699,9 +770,7 @@ class TestResolveAliasLongestPrefix:
     def test_longer_prefix_wins(self, tmp_path):
         """When aliases overlap, the longest matching prefix is used."""
         paths = {"@/": "app/", "@components/": "lib/components/"}
-        result = deps_resolve_mod.resolve_alias(
-            "@components/Button", paths, tmp_path
-        )
+        result = deps_resolve_mod.resolve_alias("@components/Button", paths, tmp_path)
         expected = (tmp_path / "lib/components/Button").resolve()
         assert result == expected
 
@@ -711,3 +780,66 @@ class TestResolveAliasLongestPrefix:
         result = deps_resolve_mod.resolve_alias("@/utils/helpers", paths, tmp_path)
         expected = (tmp_path / "src/utils/helpers").resolve()
         assert result == expected
+
+
+class TestWorkspacePackageExports:
+    def _workspace(self, tmp_path):
+        """Linked package exporting TS source through package.json exports."""
+        _write(
+            tmp_path,
+            "packages/mail/package.json",
+            json.dumps(
+                {
+                    "name": "@example/mail",
+                    "exports": {".": "./src/index.ts", "./send": "./src/send.ts"},
+                }
+            ),
+        )
+        _write(tmp_path, "packages/mail/src/index.ts", 'export { send } from "./send";')
+        _write(tmp_path, "packages/mail/src/send.ts", "export function send() {}\n")
+        node_modules = tmp_path / "node_modules/@example"
+        node_modules.mkdir(parents=True)
+        (node_modules / "mail").symlink_to(
+            (tmp_path / "packages/mail").resolve(), target_is_directory=True
+        )
+
+    def test_linked_workspace_export_is_an_edge(self, tmp_path):
+        """Bare imports of a linked workspace package reach its source."""
+        self._workspace(tmp_path)
+        _write(tmp_path, "app.ts", 'import { send } from "@example/mail";\n')
+
+        graph = deps_detector_mod.build_dep_graph(tmp_path)
+
+        app_key = str((tmp_path / "app.ts").resolve())
+        target_key = str((tmp_path / "packages/mail/src/index.ts").resolve())
+        assert target_key in graph[app_key]["imports"]
+        assert app_key in graph[target_key]["importers"]
+
+    def test_workspace_subpath_export_is_an_edge(self, tmp_path):
+        """Subpath exports like `pkg/sub` map through the exports map."""
+        self._workspace(tmp_path)
+        _write(tmp_path, "app.ts", 'import { send } from "@example/mail/send";\n')
+
+        graph = deps_detector_mod.build_dep_graph(tmp_path)
+
+        app_key = str((tmp_path / "app.ts").resolve())
+        target_key = str((tmp_path / "packages/mail/src/send.ts").resolve())
+        assert target_key in graph[app_key]["imports"]
+
+    def test_external_package_target_stays_out_of_graph(self, tmp_path):
+        """Packages resolving outside the scan root produce no edge."""
+        external = tmp_path.parent / "external-pkg"
+        (external / "src").mkdir(parents=True)
+        (external / "package.json").write_text(
+            json.dumps({"name": "@example/ext", "exports": {".": "./src/index.ts"}})
+        )
+        (external / "src/index.ts").write_text("export const x = 1;\n")
+        node_modules = tmp_path / "node_modules/@example"
+        node_modules.mkdir(parents=True)
+        (node_modules / "ext").symlink_to(external, target_is_directory=True)
+        _write(tmp_path, "app.ts", 'import { x } from "@example/ext";\n')
+
+        graph = deps_detector_mod.build_dep_graph(tmp_path)
+
+        app_key = str((tmp_path / "app.ts").resolve())
+        assert graph[app_key]["imports"] == set()

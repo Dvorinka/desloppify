@@ -58,9 +58,10 @@ def test_write_packet_snapshot_redacts_target_from_blind_packet(tmp_path):
 _P_SETUP = "desloppify.app.commands.review.prepare.setup_lang_concrete"
 _P_BUILD_PAYLOAD = "desloppify.app.commands.review.prepare.build_review_packet_payload"
 _P_WRITE_QUERY = "desloppify.app.commands.review.prepare.write_query"
+_P_BLIND_PATH = "desloppify.app.commands.review.prepare.blind_packet_path"
 
 
-def _do_prepare_patched(*, total_files: int = 3, state: dict | None = None, config: dict | None = None):
+def _do_prepare_patched(*, total_files: int = 3, state: dict | None = None, config: dict | None = None, blind_path=None):
     """Call do_prepare with mocked dependencies; return captured write_query payload."""
     args = SimpleNamespace(path=".", dimensions=None)
     captured: dict = {}
@@ -68,8 +69,15 @@ def _do_prepare_patched(*, total_files: int = 3, state: dict | None = None, conf
     def _fake_write_query(payload):
         captured.update(payload)
 
+    if blind_path is None:
+        import tempfile
+        from pathlib import Path as _Path
+
+        blind_path = _Path(tempfile.mkdtemp()) / "review_packet_blind.json"
+
     with (
         patch(_P_SETUP, return_value=(SimpleNamespace(name="python"), [])),
+        patch(_P_BLIND_PATH, return_value=blind_path),
         patch(
             _P_BUILD_PAYLOAD,
             side_effect=(
@@ -179,3 +187,14 @@ def test_review_packet_payload_ownership_is_centered_in_packet_build() -> None:
 
     assert "def build_review_packet_payload(" not in coordinator_src
     assert "def write_review_packet_snapshot(" not in coordinator_src
+
+
+def test_review_prepare_refreshes_blind_packet(tmp_path):
+    """#826: review --prepare rewrites review_packet_blind.json with fresh context."""
+    blind_path = tmp_path / "review_packet_blind.json"
+    captured = _do_prepare_patched(total_files=3, blind_path=blind_path)
+    assert blind_path.exists()
+    blind_payload = json.loads(blind_path.read_text())
+    # Blind packet derives from the freshly built payload, sanitized.
+    assert blind_payload["total_files"] == captured["total_files"]
+    assert "next_command" not in blind_payload

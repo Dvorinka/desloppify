@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, NotRequired, Required, TypedDict
 
-from desloppify.engine._plan.constants import SYNTHETIC_PREFIXES
+from desloppify.engine._plan.constants import is_marker_id
 from desloppify.engine._plan.schema.migrations import (
     upgrade_plan_to_v8 as _upgrade_plan_to_v8,
 )
@@ -314,7 +314,9 @@ def live_planned_queue_ids(plan: dict[str, Any] | None) -> set[str]:
     """Return substantive live queue IDs sourced only from ``queue_order``.
 
     Overrides and clusters are ownership metadata — they must never expand
-    the live queue.  Only explicit ``queue_order`` entries count.
+    the live queue.  Only explicit ``queue_order`` entries count. Marker
+    ids (triage/workflow/subjective) name phases, not work; ``strategy::``
+    ids name persisted work items and stay live (#900).
     """
     if not isinstance(plan, dict):
         return set()
@@ -325,7 +327,7 @@ def live_planned_queue_ids(plan: dict[str, Any] | None) -> set[str]:
         if isinstance(issue_id, str)
         and issue_id
         and issue_id not in skipped_ids
-        and not any(issue_id.startswith(prefix) for prefix in SYNTHETIC_PREFIXES)
+        and not is_marker_id(issue_id)
     }
 
 

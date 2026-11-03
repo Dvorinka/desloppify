@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 import pytest
 
 import desloppify.languages.typescript.test_coverage as ts_cov
@@ -123,6 +126,75 @@ class TestNamingBasedMapping:
 
 
 class TestResolveTsImport:
+    @pytest.mark.parametrize("relative_paths", [False, True])
+    def test_nearest_package_alias(self, tmp_path, monkeypatch, relative_paths):
+        monkeypatch.setattr(ts_cov, "get_project_root", lambda: tmp_path)
+        root_prod = _write_file(tmp_path, "src/utils.ts")
+        _write_file(
+            tmp_path,
+            "tsconfig.json",
+            json.dumps({"compilerOptions": {"paths": {"@/*": ["src/*"]}}}),
+        )
+        production = {root_prod}
+        for package in ("web", "admin"):
+            _write_file(
+                tmp_path,
+                f"apps/{package}/tsconfig.json",
+                json.dumps({"compilerOptions": {"paths": {"@/*": ["./source/*"]}}}),
+            )
+            production.add(_write_file(tmp_path, f"apps/{package}/source/utils.ts"))
+        if relative_paths:
+            production = {str(Path(p).relative_to(tmp_path)) for p in production}
+        for package in ("web", "admin"):
+            test = _write_file(tmp_path, f"apps/{package}/tests/behavior.test.ts")
+            expected = str(tmp_path / f"apps/{package}/source/utils.ts")
+            if relative_paths:
+                test = str(Path(test).relative_to(tmp_path))
+                expected = f"apps/{package}/source/utils.ts"
+            assert (
+                _resolve_import("@/utils", test, production, "typescript") == expected
+            )
+
+    def test_custom_alias_with_base_url(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(ts_cov, "get_project_root", lambda: tmp_path)
+        _write_file(
+            tmp_path,
+            "apps/web/tsconfig.json",
+            json.dumps(
+                {
+                    "compilerOptions": {
+                        "baseUrl": "./source",
+                        "paths": {"$lib/*": ["lib/*"]},
+                    }
+                }
+            ),
+        )
+        prod = _write_file(tmp_path, "apps/web/source/lib/utils.ts")
+        test = _write_file(tmp_path, "apps/web/test/behavior.test.ts")
+        assert _resolve_import("$lib/utils", test, {prod}, "typescript") == prod
+
+    def test_configured_alias_does_not_fall_back_to_root(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(ts_cov, "get_project_root", lambda: tmp_path)
+        monkeypatch.setattr(ts_cov, "get_src_path", lambda: tmp_path / "src")
+        prod = _write_file(tmp_path, "src/utils.ts")
+        _write_file(
+            tmp_path,
+            "apps/web/tsconfig.json",
+            json.dumps({"compilerOptions": {"paths": {"@/*": ["./missing/*"]}}}),
+        )
+        test = _write_file(tmp_path, "apps/web/test/behavior.test.ts")
+        assert _resolve_import("@/utils", test, {prod}, "typescript") is None
+
+    def test_relative_import_uses_project_root_not_cwd(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(ts_cov, "get_project_root", lambda: tmp_path)
+        _write_file(tmp_path, "src/utils.ts")
+        assert (
+            _resolve_import(
+                "../utils", "src/test/behavior.test.ts", {"src/utils.ts"}, "typescript"
+            )
+            == "src/utils.ts"
+        )
+
     def test_relative_import_same_dir(self, tmp_path):
         """./utils resolves to sibling file."""
         prod = _write_file(tmp_path, "src/utils.ts", "export const x = 1;\n")
@@ -200,11 +272,162 @@ class TestResolveTsImport:
         result = _resolve_import("react", "/test.ts", set(), "typescript")
         assert result is None
 
+    def test_js_specifier_resolves_tsx_source(self, tmp_path):
+        """#858: NodeNext `./x.js` specifiers resolve to `x.tsx` sources."""
+        prod = _write_file(tmp_path, "src/components/Profile.tsx", "")
+        test = _write_file(tmp_path, "src/test/interactions.test.tsx", "")
+        result = _resolve_import(
+            "../components/Profile.js", test, {prod}, "typescript"
+        )
+        assert result == prod
+
+    def test_tilde_alias_with_tsconfig_missing_mapping(self, tmp_path, monkeypatch):
+        """#858: `~/x` resolves via src/ convention when tsconfig paths omit `~`."""
+        monkeypatch.setattr(ts_cov, "get_project_root", lambda: tmp_path)
+        _write_file(
+            tmp_path,
+            "tsconfig.json",
+            json.dumps({"compilerOptions": {"paths": {"@/*": ["./src/*"]}}}),
+        )
+        prod = _write_file(tmp_path, "src/components/Profile.tsx", "")
+        test = _write_file(tmp_path, "src/test/interactions.test.tsx", "")
+        result = _resolve_import(
+            "~/components/Profile", test, {prod}, "typescript"
+        )
+        assert result == prod
+
+    def test_import_mapping_credits_tilde_and_js_specs(
+        self, tmp_path, monkeypatch
+    ):
+        """#858: ~/ and .js test imports count as direct coverage."""
+        monkeypatch.setattr(ts_cov, "get_project_root", lambda: tmp_path)
+        _write_file(
+            tmp_path,
+            "tsconfig.json",
+            json.dumps({"compilerOptions": {"paths": {"@/*": ["./src/*"]}}}),
+        )
+        profile = _write_file(
+            tmp_path, "src/components/Profile.tsx", "export const P = 1;\n"
+        )
+        widget = _write_file(
+            tmp_path, "src/components/Widget.tsx", "export const W = 1;\n"
+        )
+        test = _write_file(
+            tmp_path,
+            "src/test/interactions.test.tsx",
+            "import { P } from '~/components/Profile';\n"
+            "const loader = () => import('../components/Widget.js');\n",
+        )
+        result = import_based_mapping({}, {test}, {profile, widget}, "typescript")
+        assert result == {profile, widget}
+
+
+class TestPythonScanRootImports:
+    def test_external_test_import_maps_via_scan_root(self, tmp_path):
+        """#907: tests outside the scan root resolve scan-root-relative imports."""
+        prod = "service/routes/math_ops.py"
+        test = _write_file(
+            tmp_path,
+            "tests/test_route_behavior.py",
+            "from routes.math_ops import add\n"
+            "def test_add():\n    assert add(1, 2) == 3\n",
+        )
+        result = import_based_mapping({}, {test}, {prod}, "python")
+        assert result == {prod}
+
+    def test_ambiguous_parallel_services_stay_unresolved(self, tmp_path):
+        """#907: same-named modules across services don't guess."""
+        prod_a = "service_a/routes/math_ops.py"
+        prod_b = "service_b/routes/math_ops.py"
+        test = _write_file(
+            tmp_path,
+            "tests/test_route_behavior.py",
+            "from routes.math_ops import add\n"
+            "def test_add():\n    assert add(1, 2) == 3\n",
+        )
+        result = import_based_mapping({}, {test}, {prod_a, prod_b}, "python")
+        assert result == set()
+
+    def test_scan_root_resolution_is_unambiguous_when_unique(self, tmp_path):
+        """Suffix matching still resolves when only one service qualifies."""
+        prod_a = "service_a/routes/math_ops.py"
+        prod_b = "service_b/handlers/math_ops.py"
+        test = _write_file(
+            tmp_path,
+            "tests/test_route_behavior.py",
+            "from routes.math_ops import add\n"
+            "def test_add():\n    assert add(1, 2) == 3\n",
+        )
+        result = import_based_mapping({}, {test}, {prod_a, prod_b}, "python")
+        assert result == {prod_a}
+
+
+class TestPythonDynamicLoadSpecs:
+    def test_spec_from_file_location_extracts_py_literal(self):
+        """#905: importlib spec_from_file_location surfaces the .py target."""
+        from desloppify.languages.python.test_coverage import (
+            parse_test_import_specs,
+        )
+
+        content = (
+            "spec = importlib.util.spec_from_file_location("
+            '"audit_job", Path(__file__).with_name("audit-job.py"))\n'
+        )
+        assert "audit-job.py" in parse_test_import_specs(content)
+
+    def test_source_file_loader_extracts_py_literal(self):
+        """#905: SourceFileLoader(name, path) surfaces the .py target."""
+        from desloppify.languages.python.test_coverage import (
+            parse_test_import_specs,
+        )
+
+        content = (
+            'loader = SourceFileLoader("audit_job", "jobs/audit-job.py")\n'
+        )
+        assert "jobs/audit-job.py" in parse_test_import_specs(content)
+
+    def test_importlib_loaded_hyphenated_module_is_tested(self, tmp_path):
+        """#905: a test loading audit-job.py via importlib counts as direct."""
+        prod = _write_file(
+            tmp_path, "audit-job.py", "def result():\n    return 42\n" * 10
+        )
+        test = _write_file(
+            tmp_path,
+            "test_audit_job.py",
+            "import importlib.util\n"
+            "spec = importlib.util.spec_from_file_location("
+            '"audit_job", Path(__file__).with_name("audit-job.py"))\n'
+            "module = importlib.util.module_from_spec(spec)\n"
+            "spec.loader.exec_module(module)\n"
+            "class AuditTests(unittest.TestCase):\n"
+            "    def test_result(self):\n"
+            "        self.assertEqual(module.result(), 42)\n",
+        )
+        assert import_based_mapping({}, {test}, {prod}, "python") == {prod}
+
 
 # ── _resolve_barrel_reexports ────────────────────────────
 
 
 class TestResolveBarrelReexports:
+    def test_package_aliases_expand_through_barrel(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(ts_cov, "get_project_root", lambda: tmp_path)
+        _write_file(
+            tmp_path,
+            "apps/web/tsconfig.json",
+            json.dumps({"compilerOptions": {"paths": {"@/*": ["source/*"]}}}),
+        )
+        utils = _write_file(
+            tmp_path, "apps/web/source/utils.ts", "export const x = 1;\n"
+        )
+        barrel = _write_file(
+            tmp_path, "apps/web/source/index.ts", "export { x } from '@/utils';\n"
+        )
+        test = _write_file(
+            tmp_path, "apps/web/test/behavior.test.ts", "import { x } from '@/index';\n"
+        )
+        assert import_based_mapping({}, {test}, {utils, barrel}) == {utils, barrel}
+
     def test_named_reexports(self, tmp_path):
         """export { Foo } from './foo' resolves the re-exported module."""
         foo = _write_file(tmp_path, "src/foo.ts", "export const Foo = 1;\n")
@@ -324,6 +547,35 @@ class TestCommentStripping:
 
 
 # ── RTL assertion patterns ───────────────────────────────
+
+
+class TestTypeLevelAssertions:
+    def test_vitest_expect_type_of_calls_count_as_assertions(self, tmp_path):
+        content = (
+            "import { expectTypeOf, it } from 'vitest';\n"
+            "it('checks types', () => {\n"
+            "  expectTypeOf(value).toEqualTypeOf<string>();\n"
+            "  expectTypeOf<Readonly<Array<string>>>().toMatchTypeOf(value);\n"
+            "});\n"
+        )
+        tf = _write_file(tmp_path, "types.test.ts", content)
+
+        result = analyze_test_quality({tf}, "typescript")
+
+        assert result[tf]["assertions"] == 2
+        assert result[tf]["quality"] == "adequate"
+
+    def test_imported_expect_type_of_without_call_is_not_an_assertion(self, tmp_path):
+        content = (
+            "import { expectTypeOf, it } from 'vitest';\n"
+            "it('does not check a type', () => {});\n"
+        )
+        tf = _write_file(tmp_path, "types-unused.test.ts", content)
+
+        result = analyze_test_quality({tf}, "typescript")
+
+        assert result[tf]["assertions"] == 0
+        assert result[tf]["quality"] == "assertion_free"
 
 
 class TestRTLPatterns:
@@ -885,9 +1137,10 @@ class TestHasTestableLogic:
     def test_supabase_entrypoint_classified_separately(self, tmp_path):
         """Supabase edge index.ts should use runtime_entrypoint_no_direct_tests."""
         prod = _write_file(
-            tmp_path, "supabase/functions/stripe-webhook/index.ts",
-            "import { serve } from \"https://deno.land/std/http/server.ts\";\n"
-            "serve((_req) => new Response(\"ok\"));\n"
+            tmp_path,
+            "supabase/functions/stripe-webhook/index.ts",
+            'import { serve } from "https://deno.land/std/http/server.ts";\n'
+            'serve((_req) => new Response("ok"));\n'
             "// padding\n" * 8,
         )
         zone_map = _make_zone_map([prod])
@@ -900,9 +1153,10 @@ class TestHasTestableLogic:
     def test_deno_serve_file_classified_as_runtime_entrypoint(self, tmp_path):
         """Deno serve entrypoint should not be classified as untested_module."""
         prod = _write_file(
-            tmp_path, "edge/handler.ts",
-            "import { serve } from \"jsr:@std/http/server\";\n"
-            "serve((_req) => new Response(\"ok\"));\n"
+            tmp_path,
+            "edge/handler.ts",
+            'import { serve } from "jsr:@std/http/server";\n'
+            'serve((_req) => new Response("ok"));\n'
             "// padding\n" * 8,
         )
         zone_map = _make_zone_map([prod])
@@ -910,3 +1164,150 @@ class TestHasTestableLogic:
         entries, _ = detect_test_coverage(graph, zone_map, "typescript")
         assert len(entries) == 1
         assert entries[0]["detail"]["kind"] == "runtime_entrypoint_no_direct_tests"
+
+
+def test_naming_based_mapping_go_credits_whole_package():
+    """Go tests are package-scoped: one _test.go file covers every sibling
+    production file, not just its name-paired counterpart."""
+    production = {
+        "internal/ingest/plan.go",
+        "internal/ingest/verify.go",
+        "internal/ingest/fetch.go",
+        "internal/other/other.go",
+    }
+    tests = {"internal/ingest/ingest_test.go", "internal/ingest/fetch_test.go"}
+    tested = naming_based_mapping(tests, production, "go")
+    assert tested == {
+        "internal/ingest/plan.go",
+        "internal/ingest/verify.go",
+        "internal/ingest/fetch.go",
+    }
+
+
+def test_naming_based_mapping_plural_hook_absent_is_noop():
+    """Languages without map_test_to_sources keep name-paired behavior only."""
+    production = {"src/widget.ts", "src/other.ts"}
+    tests = {"src/widget.test.ts"}
+    tested = naming_based_mapping(tests, production, "typescript")
+    assert "src/other.ts" not in tested
+
+
+class TestWorkspacePackageExports:
+    def _workspace(self, tmp_path):
+        """Linked package exporting TS source through package.json exports."""
+        _write_file(
+            tmp_path,
+            "packages/mail/package.json",
+            json.dumps(
+                {
+                    "name": "@example/mail",
+                    "exports": {".": "./src/index.ts", "./send": "./src/send.ts"},
+                }
+            ),
+        )
+        node_modules = tmp_path / "apps/web/node_modules/@example"
+        node_modules.mkdir(parents=True)
+        (node_modules / "mail").symlink_to(
+            (tmp_path / "packages/mail").resolve(), target_is_directory=True
+        )
+
+    def test_workspace_export_resolves_to_source(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(ts_cov, "get_project_root", lambda: tmp_path)
+        self._workspace(tmp_path)
+        production = {_write_file(tmp_path, "packages/mail/src/index.ts")}
+        test = _write_file(tmp_path, "apps/web/test/mail.test.ts")
+        assert _resolve_import("@example/mail", test, production, "typescript") == str(
+            tmp_path / "packages/mail/src/index.ts"
+        )
+
+    def test_workspace_subpath_export_resolves(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(ts_cov, "get_project_root", lambda: tmp_path)
+        self._workspace(tmp_path)
+        production = {_write_file(tmp_path, "packages/mail/src/send.ts")}
+        test = _write_file(tmp_path, "apps/web/test/mail.test.ts")
+        assert _resolve_import(
+            "@example/mail/send", test, production, "typescript"
+        ) == str(tmp_path / "packages/mail/src/send.ts")
+
+    def test_missing_package_resolves_none(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(ts_cov, "get_project_root", lambda: tmp_path)
+        production = {_write_file(tmp_path, "src/index.ts")}
+        test = _write_file(tmp_path, "test/mail.test.ts")
+        assert _resolve_import("@absent/pkg", test, production, "typescript") is None
+
+
+class TestPythonSelftestConvention:
+    def test_selftest_zone_classification(self):
+        """#771: *_selftest.py files classify as TEST, not production."""
+        from desloppify.engine.policy.zones import classify_file
+        from desloppify.languages.python._zones import PY_ZONE_RULES
+
+        assert classify_file("tools/backlog_flow_selftest.py", PY_ZONE_RULES) == Zone.TEST
+        assert classify_file("decision/selftest.py", PY_ZONE_RULES) == Zone.TEST
+        assert classify_file("tools/backlog_flow.py", PY_ZONE_RULES) == Zone.PRODUCTION
+
+    def test_selftest_name_maps_to_source(self):
+        """#771: X_selftest.py maps to X.py by naming convention."""
+        result = naming_based_mapping(
+            {"tools/backlog_flow_selftest.py"},
+            {"tools/backlog_flow.py"},
+            "python",
+        )
+        assert result == {"tools/backlog_flow.py"}
+
+    def test_selftest_imports_count_as_direct_coverage(self, tmp_path):
+        """#771: a selftest importing its module counts as direct coverage."""
+        prod = _write_file(
+            tmp_path, "tools/backlog_flow.py", "def run():\n    pass\n" * 10
+        )
+        test = _write_file(
+            tmp_path,
+            "tools/backlog_flow_selftest.py",
+            "import tools.backlog_flow\n"
+            "def test_flow():\n    assert tools.backlog_flow.run() is None\n",
+        )
+        assert import_based_mapping({}, {test}, {prod}, "python") == {prod}
+
+
+class TestPythonInlineSelftests:
+    def test_main_guarded_selftest_counts_as_inline_coverage(self, tmp_path):
+        """#758: --selftest entry point + check function = inline tested."""
+        prod = _write_file(
+            tmp_path,
+            "tool.py",
+            "import sys\n"
+            "def normalize(value):\n    return value.strip().casefold()\n"
+            "def selftest():\n"
+            "    assert normalize(' A ') == 'a'\n"
+            'if __name__ == "__main__":\n'
+            '    if "--selftest" in sys.argv:\n'
+            "        raise SystemExit(selftest())\n"
+            + "# filler\n" * 15,
+        )
+        zone_map = _make_zone_map([prod])
+        entries, _ = detect_test_coverage({}, zone_map, "python")
+        untested = [
+            e
+            for e in entries
+            if e.get("detail", {}).get("kind")
+            in ("untested_module", "untested_critical")
+        ]
+        assert untested == []
+
+    def test_bare_selftest_without_entrypoint_stays_untested(self, tmp_path):
+        """#758: a def selftest with no __main__ wiring proves nothing."""
+        prod = _write_file(
+            tmp_path,
+            "tool.py",
+            "def normalize(value):\n    return value.strip().casefold()\n"
+            "def selftest():\n"
+            "    assert normalize(' A ') == 'a'\n"
+            + "# filler\n" * 15,
+        )
+        zone_map = _make_zone_map([prod])
+        entries, _ = detect_test_coverage({}, zone_map, "python")
+        assert any(
+            e.get("detail", {}).get("kind")
+            in ("untested_module", "untested_critical")
+            for e in entries
+        )

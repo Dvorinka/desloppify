@@ -44,6 +44,7 @@ class BatchRunSummaryConfig:
     run_dir: Path
     logs_dir: Path
     run_log_path: Path
+    batch_mode: str = "per-dimension"
     backlog_gate: dict[str, object] | None = None
 
 
@@ -211,6 +212,7 @@ def write_run_summary(
             summary_config.stall_warning_seconds if summary_config.run_parallel else None
         ),
         "batch_stall_kill_seconds": summary_config.stall_kill_seconds,
+        "batch_mode": summary_config.batch_mode,
         "immutable_packet": str(summary_config.immutable_packet_path),
         "blind_packet": str(summary_config.prompt_packet_path),
         "run_dir": str(summary_config.run_dir),

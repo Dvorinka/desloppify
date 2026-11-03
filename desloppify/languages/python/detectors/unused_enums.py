@@ -25,6 +25,7 @@ def detect_unused_enums(path: Path) -> tuple[list[dict], int]:
     files = find_py_files(path)
     enum_defs: dict[str, list[dict]] = {}  # filepath → [{name, line, member_count}]
     imports_by_file: dict[str, set[str]] = {}  # filepath → {imported names}
+    local_use_counts: dict[str, dict[str, int]] = {}  # filepath → {enum name: uses}
 
     for filepath in files:
         try:
@@ -77,6 +78,33 @@ def detect_unused_enums(path: Path) -> tuple[list[dict], int]:
                     imported.add(alias.name.split(".")[-1])
         imports_by_file[filepath] = imported
 
+        # Locally loaded names outside enum definitions keep a same-module
+        # consumer alive (#843): an enum used only in its defining module is
+        # live, including field/type annotations. Self-references inside the
+        # enum class own body are not consumers.
+        enum_nodes = {
+            node.name: node
+            for node in ast.walk(tree)
+            if isinstance(node, ast.ClassDef)
+            and any(
+                (isinstance(b, ast.Name) and b.id in _ENUM_BASES)
+                or (isinstance(b, ast.Attribute) and b.attr in _ENUM_BASES)
+                for b in node.bases
+            )
+        }
+        local_uses: dict[str, int] = {}
+        for node in ast.walk(tree):
+            if not (isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load)):
+                continue
+            owner = enum_nodes.get(node.id)
+            if owner is None:
+                continue
+            if owner.lineno <= node.lineno <= (owner.end_lineno or owner.lineno):
+                continue
+            local_uses[node.id] = local_uses.get(node.id, 0) + 1
+        if local_uses:
+            local_use_counts[filepath] = local_uses
+
     if not enum_defs:
         return [], len(files)
 
@@ -92,11 +120,14 @@ def detect_unused_enums(path: Path) -> tuple[list[dict], int]:
             if name in all_enum_names and filepath not in all_enum_names[name]:
                 externally_imported.add(name)
 
-    # Phase 3: report enums with zero external imports.
+    # Phase 3: report enums with zero external imports and no local use.
     entries: list[dict] = []
     for filepath, defs in enum_defs.items():
         rpath = rel(filepath)
+        used_locally = local_use_counts.get(filepath, {})
         for d in defs:
+            if d["name"] in used_locally:
+                continue
             if d["name"] not in externally_imported:
                 entries.append({
                     "file": rpath,

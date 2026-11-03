@@ -1,0 +1,46 @@
+# Example: desloppify as a PR reviewer (mechanical annotations, no LLM).
+# Copy into .github/workflows/ of the repo you want reviewed.
+#
+# What you get on every pull_request:
+#   - full mechanical scan (ci profile: no slow phases, no subjective/LLM review)
+#   - ::warning annotations on lines changed in the PR
+#   - a PR comment with the strict-score delta and per-finding lines
+#
+# Gate on the score if you want: the action exposes strict_before/strict_after/
+# annotation_count outputs.
+
+name: desloppify-review
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+  pull-requests: write   # needed for the PR comment; drop it and set comment: "false" to go comment-free
+
+jobs:
+  diff-review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # the action needs the base ref for base...HEAD
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - id: review
+        uses: Dvorinka/desloppify@main
+        with:
+          path: "."
+          # lang: typescript          # pin a language for monorepos
+          # base: ""                  # defaults to the PR base sha
+          # comment: "true"
+
+      # Optional hard gate — fail the PR when strict score regresses:
+      # - name: Score regression gate
+      #   if: steps.review.outputs.strict_after < steps.review.outputs.strict_before
+      #   run: |
+      #     echo "strict score regressed: ${{ steps.review.outputs.strict_before }} -> ${{ steps.review.outputs.strict_after }}"
+      #     exit 1

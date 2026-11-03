@@ -21,10 +21,19 @@ def test_python_security_prerequisites_and_detection_flow(monkeypatch, tmp_path)
     assert missing.reason == "missing_dependency"
 
     monkeypatch.setattr(py_security_mod.shutil, "which", lambda _cmd: None)
+    monkeypatch.setattr(py_security_mod.importlib.util, "find_spec", lambda _name: None)
     prereqs = py_security_mod.python_scan_coverage_prerequisites()
     assert len(prereqs) == 1
 
     monkeypatch.setattr(py_security_mod.shutil, "which", lambda _cmd: "/usr/bin/bandit")
+    assert py_security_mod.python_scan_coverage_prerequisites() == []
+
+    # Importable bandit with no console script on PATH is still full coverage:
+    # the adapter runs `sys.executable -m bandit`.
+    monkeypatch.setattr(py_security_mod.shutil, "which", lambda _cmd: None)
+    monkeypatch.setattr(
+        py_security_mod.importlib.util, "find_spec", lambda _name: object()
+    )
     assert py_security_mod.python_scan_coverage_prerequisites() == []
 
     monkeypatch.setattr(py_security_mod, "scan_root_from_files", lambda _files: None)
@@ -37,16 +46,22 @@ def test_python_security_prerequisites_and_detection_flow(monkeypatch, tmp_path)
             return {"detector": "security", "status": "full"}
 
     monkeypatch.setattr(py_security_mod, "scan_root_from_files", lambda _files: tmp_path)
-    monkeypatch.setattr(py_security_mod, "collect_exclude_dirs", lambda _root: [".venv", "build"])
-    monkeypatch.setattr(
-        py_security_mod,
-        "detect_with_bandit",
-        lambda _root, _zone_map, *, exclude_dirs, skip_tests=None: SimpleNamespace(
+    monkeypatch.setattr(py_security_mod, "collect_exclude_dirs", lambda _root, **_kw: [".venv", "build"])
+    captured_files: list[str] = []
+
+    def _fake_bandit(detected_files, _zone_map, *, exclude_dirs, skip_tests=None):
+        captured_files.extend(detected_files)
+        return SimpleNamespace(
             entries=[{"file": "a.py", "line": 1}],
             files_scanned=3,
             status=_Status(),
             exclude_dirs=exclude_dirs,
-        ),
+        )
+
+    monkeypatch.setattr(
+        py_security_mod,
+        "detect_with_bandit_files",
+        _fake_bandit,
     )
 
     result = py_security_mod.detect_python_security(["a.py", "b.py"], zone_map=None)
@@ -207,6 +222,45 @@ def cached(n):
     plain_fn = no_cache_tree.body[0]
     assert isinstance(plain_fn, ast.FunctionDef)
     assert complexity_mod._detect_lru_cache_mutable("mod.py", plain_fn, no_cache_tree) == []
+
+    # Immutable constructor-backed globals must not be flagged (#854).
+    immutable_tree = ast.parse(
+        """
+import re
+from functools import lru_cache
+from types import MappingProxyType
+
+_PATTERN = re.compile(r"[A-Z]+")
+_TABLE = MappingProxyType({"admin": ("administrator",)})
+
+@lru_cache
+def uses_pattern(value):
+    return _PATTERN.sub("", value)
+
+@lru_cache
+def uses_table(value):
+    return _TABLE.get(value, ())
+"""
+    )
+    for fn in (n for n in immutable_tree.body if isinstance(n, ast.FunctionDef)):
+        assert complexity_mod._detect_lru_cache_mutable("mod.py", fn, immutable_tree) == []
+
+    # A proxy over a named mutable mapping still aliases mutable state.
+    alias_tree = ast.parse(
+        """
+from functools import lru_cache
+from types import MappingProxyType
+
+_MUTABLE = {}
+_VIEW = MappingProxyType(_MUTABLE)
+
+@lru_cache
+def uses_view(value):
+    return _VIEW.get(value)
+"""
+    )
+    alias_fn = next(n for n in alias_tree.body if isinstance(n, ast.FunctionDef))
+    assert complexity_mod._detect_lru_cache_mutable("mod.py", alias_fn, alias_tree)
 
     nested_tree = ast.parse(
         """

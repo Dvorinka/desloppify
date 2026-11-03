@@ -3,8 +3,12 @@
 from __future__ import annotations
 
 from desloppify.base.output.terminal import colorize
+from desloppify.engine._plan.cluster_semantics import (
+    EXECUTION_STATUS_DONE,
+    infer_cluster_execution_status,
+)
 from desloppify.engine._plan.constants import is_synthetic_id
-from desloppify.engine._state.issue_semantics import is_review_work_item, is_triage_finding
+from desloppify.engine._state.issue_semantics import is_review_work_item
 from desloppify.engine.plan_triage import TRIAGE_IDS
 
 from ..review_coverage import (
@@ -61,9 +65,15 @@ def active_triage_issue_scope(
     `None` means "do not scope" for legacy/non-triage flows.
     An empty set means a frozen triage run exists but none of its issues are live.
     """
+    meta = plan.get("epic_triage_meta", {})
+    if not isinstance(meta, dict) or "active_triage_issue_ids" not in meta:
+        return None
+    raw_scope = meta.get("active_triage_issue_ids")
     frozen = active_triage_issue_ids(plan, state)
     if not frozen:
-        return None
+        # Explicit empty list froze nothing live — scoped to the empty set.
+        # Malformed sentinels (None/str/[""]/[None]) mean legacy unscoped flow.
+        return set() if isinstance(raw_scope, list) and not raw_scope else None
     if state is None:
         return frozen
     return live_active_triage_issue_ids(plan, state)
@@ -79,10 +89,18 @@ def scoped_manual_clusters_with_issues(
     names = manual_clusters_with_issues(plan)
     if scope is None:
         return names
+    raw_scope = (plan.get("epic_triage_meta", {}) or {}).get("active_triage_issue_ids")
+    if not scope and isinstance(raw_scope, list) and not raw_scope:
+        # A workflow-only triage still validates its current manual work,
+        # without retroactively enriching completed historical clusters.
+        return [
+            name
+            for name in names
+            if infer_cluster_execution_status(clusters.get(name, {}))
+            != EXECUTION_STATUS_DONE
+        ]
     return [
-        name
-        for name in names
-        if set(cluster_issue_ids(clusters.get(name, {}))) & scope
+        name for name in names if set(cluster_issue_ids(clusters.get(name, {}))) & scope
     ]
 
 
@@ -105,6 +123,22 @@ def triage_scoped_plan(
     }
 
 
+def _cluster_has_open_members(cluster: dict, state: dict | None) -> bool:
+    """Whether any cluster member is still open in state.
+
+    A reopened member invalidates the done marker — the cluster is
+    executable work again and keeps its enrichment requirements.
+    """
+    if not isinstance(state, dict):
+        return False
+    work_items = state.get("work_items") or state.get("issues") or {}
+    return any(
+        isinstance(work_items.get(fid), dict)
+        and work_items[fid].get("status") == "open"
+        for fid in cluster_issue_ids(cluster)
+    )
+
+
 def unenriched_clusters(
     plan: dict,
     state: dict | None = None,
@@ -113,26 +147,26 @@ def unenriched_clusters(
 
     Requirements:
     - Every cluster needs a description and at least one action_step.
-    - Small clusters (< 5 issues) need at least 1 action step per issue,
-      so each item has a concrete plan. Large clusters (>= 5) just need
-      steps overall (cluster-level plan is sufficient).
+    - An action step may cover multiple related issues. Step detail and issue
+      references are validated by the later enrich stage.
+    - Completed clusters whose members all stayed resolved cannot execute —
+      they are history, not gaps (#900).
     """
     gaps: list[tuple[str, list[str]]] = []
     clusters = plan.get("clusters", {})
     for name in scoped_manual_clusters_with_issues(plan, state):
         cluster = clusters.get(name, {})
-        issue_ids = cluster_issue_ids(cluster)
+        if (
+            infer_cluster_execution_status(cluster) == EXECUTION_STATUS_DONE
+            and not _cluster_has_open_members(cluster, state)
+        ):
+            continue
         missing: list[str] = []
         if not cluster.get("description"):
             missing.append("description")
         steps = cluster.get("action_steps") or []
-        issue_count = len(issue_ids)
         if not steps:
             missing.append("action_steps")
-        elif issue_count < 5 and len(steps) < issue_count:
-            missing.append(
-                f"action_steps (have {len(steps)}, need >= {issue_count} for small cluster)"
-            )
         if missing:
             gaps.append((name, missing))
     return gaps
@@ -159,24 +193,28 @@ def unclustered_review_issues(plan: dict, state: dict | None = None) -> list[str
         # defects are covered by cluster-level backlog decisions, not
         # per-item ledger entries.
         review_ids = [
-            fid for fid, finding in (state.get("work_items") or state.get("issues", {})).items()
-            if finding.get("status") == "open"
-            and is_review_work_item(finding)
+            fid
+            for fid, finding in (
+                state.get("work_items") or state.get("issues", {})
+            ).items()
+            if finding.get("status") == "open" and is_review_work_item(finding)
         ]
-        frozen_ids = (plan.get("epic_triage_meta", {}) or {}).get("active_triage_issue_ids")
+        frozen_ids = (plan.get("epic_triage_meta", {}) or {}).get(
+            "active_triage_issue_ids"
+        )
         if isinstance(frozen_ids, list) and frozen_ids:
             frozen_id_set = live_active_triage_issue_ids(plan, state)
             review_ids = [fid for fid in review_ids if fid in frozen_id_set]
     else:
         review_ids = [
-            fid for fid in plan.get("queue_order", [])
+            fid
+            for fid in plan.get("queue_order", [])
             if not is_synthetic_id(fid)
             and (fid.startswith("review::") or fid.startswith("concerns::"))
         ]
 
     return [
-        fid for fid in review_ids
-        if fid not in clustered_ids and fid not in skipped_ids
+        fid for fid in review_ids if fid not in clustered_ids and fid not in skipped_ids
     ]
 
 

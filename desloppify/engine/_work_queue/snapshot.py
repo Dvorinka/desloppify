@@ -14,10 +14,6 @@ from desloppify.engine._plan.constants import (
     WORKFLOW_DEFERRED_DISPOSITION_ID,
     WORKFLOW_RUN_SCAN_ID,
 )
-from desloppify.engine._plan.schema import (
-    executable_objective_ids as _executable_objective_ids,
-    live_planned_queue_ids as _live_planned_queue_ids,
-)
 from desloppify.engine._plan.refresh_lifecycle import (
     LIFECYCLE_PHASE_ASSESSMENT_POSTFLIGHT,
     LIFECYCLE_PHASE_EXECUTE,
@@ -29,15 +25,21 @@ from desloppify.engine._plan.refresh_lifecycle import (
     current_lifecycle_phase,
     derive_display_phase,
 )
+from desloppify.engine._plan.schema import (
+    executable_objective_ids as _executable_objective_ids,
+)
+from desloppify.engine._plan.schema import (
+    live_planned_queue_ids as _live_planned_queue_ids,
+)
 from desloppify.engine._plan.triage.snapshot import build_triage_snapshot
 from desloppify.engine._state.filtering import path_scoped_issues
 from desloppify.engine._state.issue_semantics import (
     counts_toward_objective_backlog,
     is_assessment_request,
-    is_review_work_item,
     is_triage_finding,
 )
 from desloppify.engine._state.schema import StateModel
+from desloppify.engine._work_queue.helpers import slugify
 from desloppify.engine._work_queue.ranking import build_issue_items
 from desloppify.engine._work_queue.synthetic import (
     build_subjective_items,
@@ -219,6 +221,10 @@ def _subjective_partitions(
     candidates = build_subjective_items(
         state, scoped_issues, threshold=threshold, plan=plan
     )
+    skipped_ids = set((plan or {}).get("skipped", {}).keys())
+    candidates = [
+        item for item in candidates if item.get("id", "") not in skipped_ids
+    ]
     initial = [item for item in candidates if item.get("initial_review")]
     postflight = [item for item in candidates if not item.get("initial_review")]
     return initial, postflight
@@ -244,7 +250,7 @@ def _workflow_partitions(
             build_score_checkpoint_item(plan, state),
             build_import_scores_item(plan, state),
             build_communicate_score_item(plan, state),
-            build_create_plan_item(plan),
+            build_create_plan_item(plan, state),
         )
         if item is not None
     ]
@@ -339,6 +345,44 @@ def _derive_display_phase(
 # ---------------------------------------------------------------------------
 
 
+def _postflight_scan_recorded(plan: dict | None) -> bool:
+    """Whether a scan postflight marker is recorded in the plan lifecycle."""
+    if not isinstance(plan, dict):
+        return False
+    refresh_state = plan.get("refresh_state")
+    if not isinstance(refresh_state, dict):
+        return False
+    return bool(refresh_state.get("postflight_scan_completed_at_scan_count"))
+
+
+def _clustered_execution_items(
+    plan: dict | None,
+    items: list[WorkQueueItem],
+) -> list[WorkQueueItem]:
+    """Execution items fronted by a multi-member manual cluster.
+
+    ``next`` collapses cluster members into a single cluster front, so a
+    multi-member manual cluster is the unit the user staged to burn
+    through. Lone queued findings stay parked behind the stale-assessment
+    marker: they remain resolvable by id via the queue guard's
+    front-planned branch and do not block the review rerun gate (#888).
+    """
+    if not isinstance(plan, dict) or not items:
+        return []
+    clustered_ids: set[str] = set()
+    for cluster in plan.get("clusters", {}).values():
+        if not isinstance(cluster, dict) or cluster.get("auto"):
+            continue
+        ids = [
+            issue_id
+            for issue_id in cluster.get("issue_ids", [])
+            if isinstance(issue_id, str) and issue_id
+        ]
+        if len(ids) >= 2:
+            clustered_ids.update(ids)
+    return [item for item in items if item.get("id", "") in clustered_ids]
+
+
 def _execution_items_for_phase(
     phase: str,
     *,
@@ -349,6 +393,8 @@ def _execution_items_for_phase(
     postflight_review_items: list[WorkQueueItem],
     postflight_workflow_items: list[WorkQueueItem],
     triage_items: list[WorkQueueItem],
+    clustered_execution_items: list[WorkQueueItem] | None = None,
+    postflight_scan_recorded: bool = False,
 ) -> list[WorkQueueItem]:
     if phase == LIFECYCLE_PHASE_REVIEW_INITIAL:
         return initial_review_items
@@ -364,6 +410,16 @@ def _execution_items_for_phase(
             return deferred_items
         return [item for item in scan_items if item.get("id") == WORKFLOW_RUN_SCAN_ID]
     if phase == LIFECYCLE_PHASE_ASSESSMENT_POSTFLIGHT:
+        # Clustered mechanical work remains the actionable front when no
+        # scan postflight is in progress: `next` renders the collapsed
+        # cluster first, so the resolve guard and review rerun gate must
+        # see the same front or each side waits on the other (#888
+        # subjective/objective queue deadlock). The stale-assessment
+        # marker stays visible right behind it. During an active
+        # postflight (postflight_scan_completed marker recorded), new
+        # execute work stays backlog-only until postflight ends.
+        if clustered_execution_items and not postflight_scan_recorded:
+            return [*clustered_execution_items, *postflight_assessment_items]
         return postflight_assessment_items
     if phase == LIFECYCLE_PHASE_REVIEW_POSTFLIGHT:
         return postflight_review_items
@@ -468,17 +524,50 @@ def _build_item_partitions(
         threshold=target_strict,
         plan=effective_plan,
     )
-    # Suppress subjective dimension items when review issues already cover
-    # the same dimension — the review issues are more actionable.
+    # Suppress subjective dimension items only when the review issues that
+    # cover the dimension are actually executable — when triage staleness
+    # masks those findings, the dim item is the only visible path to the
+    # work and suppressing it renders `next` empty (#813).
+    executable_review_dims = {
+        dim
+        for item in executable_review_items
+        if isinstance(item.get("detail"), dict)
+        if (dim := str(item["detail"].get("dimension", "")).strip().lower())
+    }
+
+    def _covered_by_executable_review(item: WorkQueueItem) -> bool:
+        detail = item.get("detail")
+        if not isinstance(detail, dict):
+            return False
+        if int(detail.get("open_review_issues", 0)) <= 0:
+            return False
+        cli_keys = [str(key) for key in detail.get("cli_keys", []) or []]
+        aliases = {
+            str(detail.get("dimension", "")).strip().lower(),
+            slugify(str(detail.get("dimension_name", ""))),
+            *cli_keys,
+            *(slugify(key) for key in cli_keys),
+        }
+        aliases.discard("")
+        return bool(aliases & executable_review_dims)
+
     postflight_assessment_items = [
         item
         for item in subjective_postflight_items
         if not (
             item.get("kind") == "subjective_dimension"
-            and int((item.get("detail") or {}).get("open_review_issues", 0)) > 0
+            and _covered_by_executable_review(item)
         )
-    ] + list(assessment_request_items_list)
-    postflight_review_items = list(executable_review_items)
+    ] + [
+        item
+        for item in assessment_request_items_list
+        if item.get("id", "") not in skipped_ids
+    ]
+    postflight_review_items = [
+        item
+        for item in executable_review_items
+        if item.get("id", "") not in skipped_ids
+    ]
 
     scan_items, postflight_workflow_items, triage_items = _workflow_partitions(
         effective_plan,
@@ -505,21 +594,29 @@ def _build_backlog(
     p: _Partitions,
     execution_ids: set[str],
 ) -> list[WorkQueueItem]:
-    return [
-        item
-        for item in (
-            [
-                *p.objective_items,
-                *p.initial_review_items,
-                *p.postflight_assessment_items,
-                *p.review_issue_items,
-                *p.scan_items,
-                *p.postflight_workflow_items,
-                *p.triage_items,
-            ]
-        )
-        if item.get("id", "") not in execution_ids
-    ]
+    # The partitions are overlapping views of the same findings (e.g. a
+    # subjective assessment request exists both as a state work item and as a
+    # synthetic item; strategy findings span objective and review partitions),
+    # so dedupe by canonical ID — each finding renders once in the backlog.
+    backlog: list[WorkQueueItem] = []
+    seen_ids: set[str] = set()
+    for item in (
+        [
+            *p.objective_items,
+            *p.initial_review_items,
+            *p.postflight_assessment_items,
+            *p.review_issue_items,
+            *p.scan_items,
+            *p.postflight_workflow_items,
+            *p.triage_items,
+        ]
+    ):
+        item_id = item.get("id", "")
+        if item_id in execution_ids or item_id in seen_ids:
+            continue
+        seen_ids.add(item_id)
+        backlog.append(item)
+    return backlog
 
 
 # ---------------------------------------------------------------------------
@@ -552,6 +649,20 @@ def build_queue_snapshot(
     )
 
     fresh_boundary = _is_fresh_boundary(effective_plan)
+    if effective_plan is not None:
+        queue_order = effective_plan.get("queue_order", [])
+        skipped_ids = set(effective_plan.get("skipped", {}))
+        queued_ids = {
+            issue_id
+            for issue_id in queue_order
+            if isinstance(issue_id, str) and issue_id not in skipped_ids
+        }
+        # The first scan seeds plan_start_scores after reconciliation. Keep
+        # initial reviews actionable when that same scan also queued them;
+        # the newly seeded baseline must not hide the work just created.
+        fresh_boundary = fresh_boundary or any(
+            item.get("id", "") in queued_ids for item in p.initial_review_items
+        )
 
     phase = _phase_for_snapshot(
         effective_plan,
@@ -574,6 +685,10 @@ def build_queue_snapshot(
         postflight_review_items=p.postflight_review_items,
         postflight_workflow_items=p.postflight_workflow_items,
         triage_items=p.triage_items,
+        clustered_execution_items=_clustered_execution_items(
+            effective_plan, p.anchored_execution_items
+        ),
+        postflight_scan_recorded=_postflight_scan_recorded(effective_plan),
     )
 
     execution_ids = {item.get("id", "") for item in execution_items}

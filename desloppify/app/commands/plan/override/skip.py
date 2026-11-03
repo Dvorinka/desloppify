@@ -99,14 +99,13 @@ def _apply_state_skip_resolution(
     if status is None:
         return None
     state_data = state_mod.load_state(state_file)
-    for fid in issue_ids:
-        state_mod.resolve_issues(
-            state_data,
-            fid,
-            status,
-            note or "",
-            attestation=attestation,
-        )
+    state_mod.resolve_issue_ids(
+        state_data,
+        issue_ids,
+        status,
+        note or "",
+        attestation=attestation,
+    )
     return state_data
 
 
@@ -221,9 +220,13 @@ def cmd_plan_skip(args: argparse.Namespace) -> None:
     plan_file = _plan_file_for_state(state_file)
     plan = load_plan(plan_file)
     issue_ids = resolve_ids_from_patterns(state, patterns, plan=plan)
+    # Cluster membership can retain resolved history even though normal issue
+    # patterns target open work. Never overwrite completed fixes with a skip.
+    inventory = state.get("work_items", state.get("issues", {}))
+    issue_ids = [issue_id for issue_id in issue_ids
+                 if inventory.get(issue_id, {}).get("status") not in {"fixed", "auto_resolved"}]
     if not issue_ids:
-        print(colorize("  No matching issues found.", "yellow"))
-        return
+        raise CommandError("No matching issues found.", exit_code=1)
 
     _warn_or_block_bulk_skip(issue_ids, confirm=bool(getattr(args, "confirm", False)))
 
@@ -312,8 +315,7 @@ def cmd_plan_unskip(args: argparse.Namespace) -> None:
         state, patterns, plan=plan, status_filter="all"
     )
     if not issue_ids:
-        print(colorize("  No matching issues found.", "yellow"))
-        return
+        raise CommandError("No matching issues found.", exit_code=1)
 
     include_protected = bool(getattr(args, "force", False))
     count, need_reopen, protected_kept = unskip_items(
@@ -333,8 +335,7 @@ def cmd_plan_unskip(args: argparse.Namespace) -> None:
     state_data: dict | None = None
     if need_reopen:
         state_data = state_mod.load_state(state_file)
-        for fid in need_reopen:
-            reopened.extend(state_mod.resolve_issues(state_data, fid, "open"))
+        reopened = state_mod.resolve_issue_ids(state_data, need_reopen, "open")
     reconcile_state = state_data or state
     transition_phase: str | None = None
     if invalidate_postflight_scan(plan, issue_ids=unskipped_ids, state=reconcile_state):
@@ -388,8 +389,7 @@ def cmd_plan_backlog(args: argparse.Namespace) -> None:
         state, patterns, plan=plan, status_filter="all"
     )
     if not issue_ids:
-        print(colorize("  No matching issues found.", "yellow"))
-        return
+        raise CommandError("No matching issues found.", exit_code=1)
 
     removed = backlog_items(plan, issue_ids)
     if not removed:
@@ -408,8 +408,7 @@ def cmd_plan_backlog(args: argparse.Namespace) -> None:
     ]
 
     if reopen_ids:
-        for fid in reopen_ids:
-            state_mod.resolve_issues(state_data, fid, "open")
+        state_mod.resolve_issue_ids(state_data, reopen_ids, "open")
 
     append_log_entry(
         plan,

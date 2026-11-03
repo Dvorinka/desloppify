@@ -5,9 +5,12 @@ from __future__ import annotations
 import argparse
 from types import SimpleNamespace
 
+import pytest
+
 import desloppify.app.commands.plan.triage.stages.observe as observe_mod
 import desloppify.app.commands.plan.triage.stages.organize as organize_mod
 import desloppify.app.commands.plan.triage.stages.reflect as reflect_mod
+from desloppify.base.exception_sets import CommandError
 
 
 def _args(**overrides) -> argparse.Namespace:
@@ -110,7 +113,21 @@ def test_organize_exits_when_reflect_requirement_not_met(monkeypatch) -> None:
     monkeypatch.setattr(organize_mod, "has_triage_in_queue", lambda _plan: True)
     monkeypatch.setattr(organize_mod, "_require_reflect_stage_for_organize", lambda _stages: False)
 
-    organize_mod._cmd_stage_organize(_args(report="organized"), services=services)
+    with pytest.raises(CommandError):
+        organize_mod._cmd_stage_organize(_args(report="organized"), services=services)
+
+
+def test_organize_raises_when_submission_validation_fails(monkeypatch) -> None:
+    plan = {"epic_triage_meta": {"triage_stages": {}}, "clusters": {}}
+    services, _saved, _logs = _services(plan, state={"issues": {}})
+    monkeypatch.setattr(organize_mod, "has_triage_in_queue", lambda _plan: True)
+    monkeypatch.setattr(organize_mod, "_require_reflect_stage_for_organize", lambda _stages: True)
+    monkeypatch.setattr(organize_mod, "auto_confirm_reflect_for_organize", lambda **_kwargs: True)
+
+    with pytest.raises(CommandError):
+        organize_mod._cmd_stage_organize(_args(report="too short"), services=services)
+
+    assert "organize" not in plan["epic_triage_meta"]["triage_stages"]
 
 
 def test_organize_records_zero_issue_noop_batch(monkeypatch) -> None:
@@ -249,3 +266,19 @@ def test_reflect_preserves_observe_auto_disposition_during_fresh_persist(
     ledger = plan["epic_triage_meta"]["triage_stages"]["reflect"]["disposition_ledger"]
     assert [entry["issue_id"] for entry in ledger] == ["review::complexity::aaaa1111"]
     assert saved
+
+
+def test_reflect_recurring_dimension_accepts_catalog_display_label() -> None:
+    assert reflect_mod._validate_recurring_dimension_mentions(
+        report="The strategy directly addresses the High elegance rework pattern.",
+        recurring_dims=["high_level_elegance"],
+        recurring={"high_level_elegance": {"open": ["open"], "resolved": ["resolved"]}},
+    )
+
+
+def test_reflect_recurring_dimension_accepts_canonical_snake_case() -> None:
+    assert reflect_mod._validate_recurring_dimension_mentions(
+        report="The strategy directly addresses the high_level_elegance rework pattern.",
+        recurring_dims=["high_level_elegance"],
+        recurring={"high_level_elegance": {"open": ["open"], "resolved": ["resolved"]}},
+    )

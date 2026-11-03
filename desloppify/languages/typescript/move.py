@@ -59,6 +59,59 @@ def _compute_ts_specifiers(from_file: str, to_file: str) -> tuple[str | None, st
     return alias, relative
 
 
+_EXPLICIT_EXTS = (".ts", ".tsx", ".js", ".jsx")
+
+
+def _spec_forms(spec: str, is_index: bool) -> dict[str, str]:
+    """Map written-form suffixes to full specifiers for one computed spec.
+
+    A non-index module accepts explicit extensions on the bare specifier;
+    an index module accepts them only on the `/index` spelling — `./x.ts`
+    names the file `x.ts`, never `x/index.ts`."""
+    forms = {}
+    for ext in ("", *_EXPLICIT_EXTS):
+        if is_index:
+            forms["/index" + ext] = spec + "/index" + ext
+        else:
+            forms[ext] = spec + ext
+    forms[""] = spec
+    return forms
+
+
+def _form_replacements(
+    content: str,
+    old_spec: str | None,
+    new_spec: str | None,
+    *,
+    old_is_index: bool,
+    new_is_index: bool,
+) -> list[tuple[str, str]]:
+    """Find specifier spellings present in content and pair them with the
+    equivalent spelling of the destination, preserving explicit extensions
+    and index-module forms."""
+    if old_spec is None or new_spec is None or old_spec == new_spec:
+        return []
+    old_forms = _spec_forms(old_spec, old_is_index)
+    new_forms = _spec_forms(new_spec, new_is_index)
+    replacements = []
+    for suffix, old_form in old_forms.items():
+        new_form = new_forms.get(suffix)
+        if new_form is None:
+            # The written form has no equivalent on the destination shape:
+            # fold `/index` spellings onto the bare specifier or vice versa.
+            alt = (
+                suffix[len("/index") :]
+                if suffix.startswith("/index")
+                else "/index" + suffix
+            )
+            new_form = new_forms[alt]
+        for quote in ("'", '"'):
+            target = f"{quote}{old_form}{quote}"
+            if target in content:
+                replacements.append((target, f"{quote}{new_form}{quote}"))
+    return replacements
+
+
 def find_replacements(
     source_abs: str,
     dest_abs: str,
@@ -88,16 +141,21 @@ def find_replacements(
             )
             continue
 
+        old_is_index = Path(source_abs).stem == "index"
+        new_is_index = Path(dest_abs).stem == "index"
         for old_spec, new_spec in [
             (old_alias, new_alias),
             (old_relative, new_relative),
         ]:
-            if old_spec is None or new_spec is None or old_spec == new_spec:
-                continue
-            for quote in ("'", '"'):
-                target = f"{quote}{old_spec}{quote}"
-                if target in content:
-                    replacements.append((target, f"{quote}{new_spec}{quote}"))
+            replacements.extend(
+                _form_replacements(
+                    content,
+                    old_spec,
+                    new_spec,
+                    old_is_index=old_is_index,
+                    new_is_index=new_is_index,
+                )
+            )
 
         if replacements:
             changes[importer] = _dedup(replacements)
@@ -127,12 +185,15 @@ def find_self_replacements(
     for imported_file in entry.get("imports", set()):
         _, old_relative = _compute_ts_specifiers(source_abs, imported_file)
         _, new_relative = _compute_ts_specifiers(dest_abs, imported_file)
-        if old_relative == new_relative:
-            continue
-        for quote in ("'", '"'):
-            target = f"{quote}{old_relative}{quote}"
-            if target in content:
-                replacements.append((target, f"{quote}{new_relative}{quote}"))
+        replacements.extend(
+            _form_replacements(
+                content,
+                old_relative,
+                new_relative,
+                old_is_index=Path(imported_file).stem == "index",
+                new_is_index=Path(imported_file).stem == "index",
+            )
+        )
 
     return _dedup(replacements)
 

@@ -96,6 +96,44 @@ def test_file_checks_cover_edge_auth_json_parse_and_rls_detection() -> None:
     assert "rls_bypass_views" in _kinds(sql_combined)
 
 
+def test_json_parse_on_same_line_as_try_catch_is_guarded() -> None:
+    lines = [
+        "const parse = async () => { try { return JSON.parse(serialized); } catch { return null; } }",
+        "try { JSON.parse(first); } catch {} try { JSON.parse(second); } catch (error) {}",
+    ]
+    entries: list[dict[str, object]] = []
+
+    file_checks_mod._check_json_parse_unguarded("src/parse.ts", lines, entries)
+
+    assert entries == []
+
+
+def test_json_parse_after_try_or_inside_catch_remains_unguarded() -> None:
+    lines = [
+        "try { operation(); } catch {} JSON.parse(afterTry);",
+        "try { operation(); } catch { JSON.parse(insideCatch); }",
+    ]
+    entries: list[dict[str, object]] = []
+
+    file_checks_mod._check_json_parse_unguarded("src/parse.ts", lines, entries)
+
+    assert [entry["detail"]["line"] for entry in entries] == [1, 2]
+
+
+def test_json_parse_scope_ignores_string_syntax_and_nested_arrows() -> None:
+    lines = [
+        'const brace = "}"; try { JSON.parse(guarded); } catch {}',
+        'const example = "try { } catch {}"; JSON.parse(unguarded);',
+        "try { const parseLater = () => JSON.parse(callbackValue); } catch {}",
+        "try { const noop = () => 0; JSON.parse(afterArrow); } catch {}",
+    ]
+    entries: list[dict[str, object]] = []
+
+    file_checks_mod._check_json_parse_unguarded("src/parse.ts", lines, entries)
+
+    assert [entry["detail"]["line"] for entry in entries] == [2, 3]
+
+
 def test_line_checks_report_expected_security_kinds() -> None:
     service_role_lines = [
         "const serviceRole = process.env.SUPABASE_SERVICE_ROLE_KEY",
@@ -135,6 +173,77 @@ def test_line_checks_report_expected_security_kinds() -> None:
         has_dev_guard=False,
     )
     assert {"dangerously_set_inner_html", "innerHTML_assignment"} <= _kinds(html_issues)
+
+    # Safe innerHTML/dangerouslySetInnerHTML uses must not flag.
+    safe_cases = [
+        (["const el = row; el.innerHTML = ''"], "el.innerHTML = ''"),
+        (
+            ["const x = <div dangerouslySetInnerHTML={{ __html: '' }} />"],
+            "const x = <div dangerouslySetInnerHTML={{ __html: '' }} />",
+        ),
+        (
+            ["const x = <div dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(raw) }} />"],
+            "const x = <div dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(raw) }} />",
+        ),
+        (
+            [
+                "const ICON = `<svg><path d='M0 0h24v24H0z'/></svg>`;",
+                "const x = <div dangerouslySetInnerHTML={{ __html: ICON }} />",
+            ],
+            "const x = <div dangerouslySetInnerHTML={{ __html: ICON }} />",
+        ),
+        (
+            ["// el.innerHTML = payload.html"],
+            "// el.innerHTML = payload.html",
+        ),
+        (
+            ["el.innerHTML = sanitizeHtml(input)"],
+            "el.innerHTML = sanitizeHtml(input)",
+        ),
+    ]
+    for lines, line in safe_cases:
+        safe_issues = line_checks_mod._line_security_issues(
+            filepath="src/dom.ts",
+            normalized_path="/src/dom.ts",
+            lines=lines,
+            line_num=1,
+            line=line,
+            is_server_only=False,
+            has_dev_guard=False,
+        )
+        kinds = _kinds(safe_issues)
+        assert "dangerously_set_inner_html" not in kinds, line
+        assert "innerHTML_assignment" not in kinds, line
+
+    # Interpolated markup and untrusted operands still flag.
+    unsafe_cases = [
+        (
+            [
+                "const TPL = `<div>${userHtml}</div>`;",
+                "const x = <div dangerouslySetInnerHTML={{ __html: TPL }} />",
+            ],
+            "const x = <div dangerouslySetInnerHTML={{ __html: TPL }} />",
+        ),
+        (
+            ["const x = <div dangerouslySetInnerHTML={{ __html: props.html }} />"],
+            "const x = <div dangerouslySetInnerHTML={{ __html: props.html }} />",
+        ),
+        (
+            ["el.innerHTML = row.html"],
+            "el.innerHTML = row.html",
+        ),
+    ]
+    for lines, line in unsafe_cases:
+        unsafe_issues = line_checks_mod._line_security_issues(
+            filepath="src/dom.ts",
+            normalized_path="/src/dom.ts",
+            lines=lines,
+            line_num=1,
+            line=line,
+            is_server_only=False,
+            has_dev_guard=False,
+        )
+        assert _kinds(unsafe_issues), line
 
     dev_cred_line = "const token = import.meta.env.VITE_API_TOKEN"
     dev_cred_issues = line_checks_mod._line_security_issues(

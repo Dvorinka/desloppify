@@ -93,7 +93,10 @@ def test_integration_workflow_uses_deterministic_roslyn_path() -> None:
 def test_publish_workflow_keeps_release_safety_gates() -> None:
     wf = _load_yaml(PUBLISH_WORKFLOW)
     on_block = _on_block(wf)
-    assert on_block.get("push", {}).get("branches") == ["main"]
+    # The PyPI project name belongs to upstream (peteromalley) and trusted
+    # publishing is bound to their repo — a fork push to main must never
+    # attempt an automatic publish. Manual dispatch only.
+    assert "push" not in on_block
     assert "workflow_dispatch" in on_block
 
     publish_job = wf["jobs"]["publish"]

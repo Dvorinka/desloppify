@@ -6,6 +6,12 @@ Upgraded from generic_lang to full class-based plugin.
 
 from __future__ import annotations
 
+import re
+import subprocess  # nosec B404
+from functools import lru_cache
+from pathlib import Path
+from typing import Any
+
 from desloppify.base.discovery.paths import get_area
 from desloppify.languages._framework.base.phase_builders import (
     detector_phase_security,
@@ -41,6 +47,38 @@ from desloppify.languages.go._zones import GO_ZONE_RULES
 
 GO_ENTRY_PATTERNS = ["/main.go", "/cmd/"]
 
+_GOLANGCI_CMD_V1 = "golangci-lint run --out-format=json"
+_GOLANGCI_CMD_V2 = "golangci-lint run --output.json.path stdout"
+
+
+@lru_cache(maxsize=1)
+def _golangci_major() -> int | None:
+    """Return the installed golangci-lint major version, or None if unknown."""
+    try:
+        proc = subprocess.run(
+            ["golangci-lint", "version"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return None
+    match = re.search(r"version\s+v?(\d+)\.", proc.stdout or "")
+    return int(match.group(1)) if match else None
+
+
+def _golangci_cmd(_path: Path, _lang: Any) -> str | None:
+    """Pick the golangci-lint JSON-output flag for the installed major.
+
+    v2 removed ``--out-format`` (issue #887); its JSON-to-stdout spelling is
+    ``--output.json.path stdout``.  ``None`` keeps the v1 command when the
+    version cannot be read — the tool-missing path already handles that.
+    """
+    if (_golangci_major() or 0) >= 2:
+        return _GOLANGCI_CMD_V2
+    return None
+
 class GoConfig(LangConfig):
     """Go language configuration."""
 
@@ -57,10 +95,11 @@ class GoConfig(LangConfig):
                 DetectorPhase("Structural analysis", phase_structural),
                 make_tool_phase(
                     "golangci-lint",
-                    "golangci-lint run --out-format=json",
+                    _GOLANGCI_CMD_V1,
                     "golangci",
                     "golangci_lint",
                     tier=2,
+                    cmd_fn=_golangci_cmd,
                 ),
                 make_tool_phase(
                     "go vet", "go vet ./...", "gnu", "vet_error", tier=3

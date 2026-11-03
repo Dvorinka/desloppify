@@ -7,8 +7,8 @@ from pathlib import Path
 from desloppify.base.output.terminal import log
 from desloppify.engine._state.filtering import make_issue
 from desloppify.engine.policy.zones import adjust_potential, filter_entries
-from desloppify.languages._framework.issue_factories import make_smell_issues
 from desloppify.languages._framework.base.types import LangRuntimeContract
+from desloppify.languages._framework.issue_factories import make_smell_issues
 from desloppify.languages.python.detectors import dict_keys as dict_keys_detector_mod
 from desloppify.languages.python.detectors import (
     import_linter_adapter as import_linter_adapter_mod,
@@ -17,6 +17,9 @@ from desloppify.languages.python.detectors import (
     mutable_state_scan as mutable_state_detector_mod,
 )
 from desloppify.languages.python.detectors import smells as smells_detector_mod
+from desloppify.languages.python.detectors.dict_keys.schema import (
+    detect_schema_drift_with_semantic_corrections,
+)
 from desloppify.languages.python.detectors.ruff_smells import detect_with_ruff_smells
 from desloppify.state_io import Issue
 
@@ -117,7 +120,9 @@ def phase_dict_keys(path: Path, lang: LangRuntimeContract) -> tuple[list[Issue],
             )
         )
 
-    drift_entries, _ = dict_keys_detector_mod.detect_schema_drift(path)
+    drift_entries, _, semantic_correction_entries = (
+        detect_schema_drift_with_semantic_corrections(path)
+    )
     drift_entries = filter_entries(lang.zone_map, drift_entries, "dict_keys")
     for entry in drift_entries:
         results.append(
@@ -136,6 +141,36 @@ def phase_dict_keys(path: Path, lang: LangRuntimeContract) -> tuple[list[Issue],
                 },
             )
         )
+
+    semantic_correction_entries = filter_entries(
+        lang.zone_map,
+        semantic_correction_entries,
+        "dict_keys",
+    )
+    semantic_corrections = getattr(lang, "semantic_corrections", None)
+    if isinstance(semantic_corrections, dict):
+        for entry in semantic_correction_entries:
+            correction_issue = make_issue(
+                "dict_keys",
+                entry["file"],
+                f"schema_drift::{entry['key']}::{entry['line']}",
+                tier=entry["tier"],
+                confidence=entry["confidence"],
+                summary=entry["summary"],
+            )
+            semantic_corrections[correction_issue["id"]] = {
+                "detector": "dict_keys",
+                "kind": "schema_drift",
+                "file": correction_issue["file"],
+                "key": entry["key"],
+                "line": str(entry["line"]),
+                "rule": entry["rule"],
+                "evidence": (
+                    f"{entry['file']}:{entry['line']} is "
+                    f"{entry['comparison_scope']} and is absent from "
+                    "the scoped schema-drift output"
+                ),
+            }
 
     log(f"         -> {len(results)} dict key issues")
     return results, {

@@ -2,7 +2,13 @@
 
 from __future__ import annotations
 
+from fnmatch import fnmatch
 from pathlib import Path
+
+from desloppify.base.discovery.source import (
+    DEFAULT_EXCLUSIONS,
+    get_exclusions,
+)
 
 from . import state
 from ..base.types import LangConfig
@@ -86,7 +92,7 @@ def auto_detect_lang(
         # Marker-less fallback: pick language with most source files.
         best, best_count = None, 0
         for lang_name, cfg in configs.items():
-            count = len(cfg.file_finder(project_root))
+            count = _scannable_file_count(cfg, project_root)
             if count > best_count:
                 best, best_count = lang_name, count
         return best if best_count > 0 else None
@@ -97,10 +103,68 @@ def auto_detect_lang(
     # Multiple candidates: choose language with most source files.
     best, best_count = None, -1
     for lang_name in candidates:
-        count = len(configs[lang_name].file_finder(project_root))
+        count = _scannable_file_count(configs[lang_name], project_root)
         if count > best_count:
             best, best_count = lang_name, count
     return best
+
+
+def _scannable_file_count(cfg: LangConfig, project_root: Path) -> int:
+    """Count source files honoring configured exclusions.
+
+    The marker-less fallback used to count raw ``file_finder`` results, so a
+    language whose vendored/build-output headers sit inside excluded
+    directories could win detection over the project's real language
+    (upstream #727). Count only files that scan would actually see.
+    """
+    if not cfg.file_finder:
+        return 0
+    excluded_dirs = {
+        Path(entry).resolve()
+        for entry in _excluded_dir_paths(project_root)
+    }
+    glob_patterns = _excluded_globs()
+    count = 0
+    for filepath in cfg.file_finder(project_root):
+        path = Path(filepath)
+        try:
+            resolved = path.resolve()
+        except OSError:
+            resolved = path.absolute()
+        if any(
+            resolved == excluded or excluded in resolved.parents
+            for excluded in excluded_dirs
+        ):
+            continue
+        try:
+            rel = str(resolved.relative_to(project_root.resolve()))
+        except ValueError:
+            rel = str(path)
+        if any(fnmatch(rel, pattern) for pattern in glob_patterns):
+            continue
+        count += 1
+    return count
+
+
+def _excluded_dir_paths(project_root: Path) -> list[str]:
+    """Absolute paths of non-glob exclusion dirs under *project_root*."""
+    root = Path(project_root).resolve()
+    out: list[str] = []
+    for pattern in (*DEFAULT_EXCLUSIONS, *get_exclusions()):
+        if not pattern or "*" in pattern or "?" in pattern or "[" in pattern:
+            continue
+        candidate = Path(pattern)
+        out.append(str(candidate if candidate.is_absolute() else root / candidate))
+    return out
+
+
+def _excluded_globs() -> tuple[str, ...]:
+    """Glob exclusion patterns matched against repo-relative paths."""
+    return tuple(
+        pattern
+        for pattern in (*DEFAULT_EXCLUSIONS, *get_exclusions())
+        if pattern and any(ch in pattern for ch in _MARKER_GLOB_CHARS)
+    )
 
 
 def _detect_marker_exists(project_root: Path, marker: str) -> bool:

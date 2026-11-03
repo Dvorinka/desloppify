@@ -50,6 +50,9 @@ from desloppify.base.exception_sets import CommandError
 from desloppify.base.discovery.paths import get_project_root
 from desloppify.base.output.terminal import colorize
 from desloppify.base.search.query import write_query
+from desloppify.state_scoring import score_snapshot
+
+from . import diff_annotations as diff_annotations_mod
 
 from . import preflight as scan_preflight_mod
 
@@ -201,6 +204,44 @@ def cmd_scan(args: argparse.Namespace) -> None:
     print_llm_summary(runtime.state, badge_path, narrative, merge.diff)
     auto_update_skill()
 
+    diff_base = getattr(args, "diff", None)
+    if diff_base:
+        ranges = diff_annotations_mod.changed_line_ranges(
+            diff_base, cwd=get_project_root()
+        )
+        annotations = diff_annotations_mod.annotations_for_issues(
+            runtime.state.get("work_items") or runtime.state.get("issues", {}),
+            ranges,
+        )
+        new_strict = score_snapshot(runtime.state).strict
+        diff_annotations_mod.print_diff_report(
+            annotations,
+            prev_strict=merge.prev_strict,
+            new_strict=new_strict,
+            base=diff_base,
+        )
+        max_regression = getattr(args, "max_regression", None)
+        if (
+            max_regression is not None
+            and merge.prev_strict is not None
+            and new_strict is not None
+            and merge.prev_strict - new_strict > max_regression
+        ):
+            raise CommandError(
+                f"Strict score regressed {merge.prev_strict - new_strict:.1f} "
+                f"points (allowed {max_regression}).",
+                exit_code=3,
+            )
+        annotations_json = getattr(args, "annotations_json", None)
+        if annotations_json:
+            diff_annotations_mod.write_annotations_json(
+                annotations_json,
+                annotations,
+                base=diff_base,
+                prev_strict=merge.prev_strict,
+                new_strict=new_strict,
+            )
+
 
 def _cmd_scan_by_language(args: argparse.Namespace) -> None:
     path = Path(getattr(args, "path", None) or get_project_root())
@@ -220,6 +261,8 @@ def _cmd_scan_by_language(args: argparse.Namespace) -> None:
         lang_args.by_language = False
         lang_args.lang = lang_name
         lang_args.state = None
+        # The CLI builds a runtime before dispatch. Rebuild it for each language.
+        lang_args.runtime = None
         cmd_scan(lang_args)
 
 

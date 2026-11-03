@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Any
 
@@ -29,6 +30,9 @@ from desloppify.engine.detectors.patterns.security import (
 )
 from desloppify.engine.detectors.patterns.security import (
     is_placeholder as _is_placeholder,
+)
+from desloppify.engine.detectors.patterns.security import (
+    looks_like_secret_value as _looks_like_secret_value,
 )
 
 
@@ -110,7 +114,7 @@ def _secret_name_entries(
             continue
         if _is_env_lookup(line):
             continue
-        if _is_placeholder(value):
+        if not _looks_like_secret_value(value):
             continue
         entries.append(
             make_security_entry(
@@ -178,13 +182,46 @@ def _weak_crypto_entries(
     return entries
 
 
+_SIMPLE_STRING_RE = re.compile(r'"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'')
+_TEMPLATE_LITERAL_RE = re.compile(r"`(?:\\.|[^`\\])*`")
+_TEMPLATE_INTERP_RE = re.compile(r"\$\{([^}]*)\}")
+_FSTRING_RE = re.compile(r"\bf(?:\"(?:\\.|[^\"\\])*\"|'(?:\\.|[^'\\])*')")
+_FSTRING_INTERP_RE = re.compile(r"\{([^{}]*)\}")
+
+
+def _log_code_part(line: str) -> str:
+    """Return the log line with static string text removed.
+
+    A sensitive noun inside a static message (`"Obtaining auth tokens…"`)
+    is not logged data (#786). `'…'`/`"…"` strings drop wholesale; template
+    literals keep `${…}` and Python f-strings keep `{…}` interpolations —
+    those are dynamic payloads.
+    """
+    s = _FSTRING_RE.sub(
+        lambda m: " ".join(_FSTRING_INTERP_RE.findall(m.group(0))), line
+    )
+    no_simple = _SIMPLE_STRING_RE.sub('""', s)
+    return _TEMPLATE_LITERAL_RE.sub(
+        lambda m: " ".join(_TEMPLATE_INTERP_RE.findall(m.group(0))),
+        no_simple,
+    )
+
+
 def _sensitive_log_entries(
     filepath: str,
     line_num: int,
     line: str,
 ) -> list[dict[str, Any]]:
-    if not (_LOG_CALLS.search(line) and _SENSITIVE_IN_LOG.search(line)):
+    code = _log_code_part(line)
+    if not _LOG_CALLS.search(code):
         return []
+    if not _SENSITIVE_IN_LOG.search(code):
+        # Sensitive word only inside a string literal: flag only when a
+        # non-string payload is actually logged — `log("Authorization:",
+        # authHeader)` leaks the value; `log("Obtaining auth tokens...")`
+        # leaks nothing (#786).
+        if not (re.search(r"[,(]\s*[\w$]", code) and _SENSITIVE_IN_LOG.search(line)):
+            return []
     return [
         make_security_entry(
             filepath,

@@ -6,8 +6,11 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 
 from desloppify.engine._plan.annotations import get_issue_note
-from desloppify.engine._plan.constants import SYNTHETIC_PREFIXES
-from desloppify.engine._plan.cluster_semantics import EXECUTION_STATUS_DONE, cluster_is_active
+from desloppify.engine._plan.cluster_semantics import (
+    EXECUTION_STATUS_DONE,
+    cluster_is_active,
+)
+from desloppify.engine._plan.constants import is_marker_id
 from desloppify.engine._plan.operations.lifecycle import clear_focus_if_cluster_empty
 from desloppify.engine._plan.operations.meta import append_log_entry
 from desloppify.engine._plan.operations.skip import resurface_stale_skips
@@ -59,6 +62,33 @@ def _is_issue_alive(state: StateModel, issue_id: str) -> bool:
     return issue.get("status") in _ALIVE_STATUSES
 
 
+def _has_durable_skip(plan: PlanModel, issue_id: str) -> bool:
+    entry = plan.get("skipped", {}).get(issue_id, {})
+    return skip_kind_state_status(str(entry.get("kind", ""))) in {
+        "false_positive", "wontfix",
+    }
+
+
+def _remove_action_references(plan: PlanModel, issue_id: str, now: str) -> None:
+    """Detach completed work without discarding its deliberate disposition."""
+    order = plan.get("queue_order", [])
+    if issue_id in order:
+        order.remove(issue_id)
+    prune_promoted_ids(plan, {issue_id})
+    for cluster in plan.get("clusters", {}).values():
+        ids = cluster.get("issue_ids", [])
+        if issue_id in ids:
+            ids.remove(issue_id)
+        for step in cluster.get("action_steps", []):
+            if isinstance(step, dict):
+                refs = step.get("issue_refs", [])
+                step["issue_refs"] = [fid for fid in refs if fid != issue_id]
+    override = plan.get("overrides", {}).get(issue_id)
+    if override and override.get("cluster"):
+        override["cluster"] = None
+        override["updated_at"] = now
+
+
 def _supersede_id(
     plan: PlanModel,
     state: StateModel,
@@ -97,23 +127,8 @@ def _supersede_id(
 
     plan["superseded"][issue_id] = entry
 
-    # Remove from queue_order, skipped, promoted_ids, cluster issue_ids
-    order: list[str] = plan.get("queue_order", [])
-    skipped: dict = plan.get("skipped", {})
-    if issue_id in order:
-        order.remove(issue_id)
-    skipped.pop(issue_id, None)
-    prune_promoted_ids(plan, {issue_id})
-    for cluster in plan.get("clusters", {}).values():
-        ids = cluster.get("issue_ids", [])
-        if issue_id in ids:
-            ids.remove(issue_id)
-
-    # Clear stale cluster reference from override
-    override = plan.get("overrides", {}).get(issue_id)
-    if override and override.get("cluster"):
-        override["cluster"] = None
-        override["updated_at"] = now
+    _remove_action_references(plan, issue_id, now)
+    plan.get("skipped", {}).pop(issue_id, None)
 
     return True
 
@@ -153,15 +168,23 @@ def _referenced_plan_issue_ids(plan: PlanModel) -> set[str]:
     already_superseded = set(plan.get("superseded", {}).keys())
     return {
         fid for fid in referenced_ids - already_superseded
-        if not any(fid.startswith(prefix) for prefix in SYNTHETIC_PREFIXES)
+        if not is_marker_id(fid)
     }
 
 
 def _prune_existing_superseded_references(
     plan: PlanModel,
+    state: StateModel,
     *,
     result: ReconcileResult,
 ) -> None:
+    # An ordinary re-skip can restore a disposition lost by an earlier scan.
+    # Its old tombstone must not delete that deliberate skip before status sync.
+    superseded = plan.get("superseded", {})
+    for fid in list(superseded):
+        if _has_durable_skip(plan, fid) and _issue_exists_in_state(state, fid):
+            superseded.pop(fid)
+            result.changes += 1
     superseded_ids = {
         fid for fid in plan.get("superseded", {})
         if isinstance(fid, str) and fid
@@ -242,7 +265,7 @@ def _action_referenced_plan_issue_ids(plan: PlanModel) -> set[str]:
         fid for fid in referenced_ids
         if isinstance(fid, str)
         and fid
-        and not any(fid.startswith(prefix) for prefix in SYNTHETIC_PREFIXES)
+        and not is_marker_id(fid)
     }
 
 
@@ -257,6 +280,10 @@ def _supersede_nonactionable_action_references(
     for fid in sorted(_action_referenced_plan_issue_ids(plan)):
         issue = issues.get(fid)
         if issue is None or issue.get("status") in _ALIVE_STATUSES:
+            continue
+        if _has_durable_skip(plan, fid):
+            _remove_action_references(plan, fid, now)
+            result.changes += 1
             continue
         if _supersede_id(plan, state, fid, now):
             result.superseded.append(fid)
@@ -349,6 +376,46 @@ def _reconcile_epic_clusters(
         result.changes += 1
 
 
+def _restore_skip_resolution_metadata(issue: dict, entry: dict) -> None:
+    """Repair metadata after scan merge reopened a durable skip.
+
+    upsert_issues reopens fixed/auto_resolved/false_positive findings that
+    reappear in detector output before the plan reconcile restores the
+    skip-kind status. The terminal row should look like the adjudicated
+    skip — not an unresolved reopen — so the stale reopen note and null
+    resolution fields are restored. The reopen_count bump stays: each
+    reappearance is genuine re-detection history (#881).
+    """
+    note = issue.get("note")
+    if not isinstance(note, str) or not note.startswith("Reopened (×"):
+        return
+    skipped_at = entry.get("created_at") or utc_now()
+    issue["note"] = entry.get("note") or ""
+    issue["resolved_at"] = skipped_at
+    issue["resolution_attestation"] = {
+        "kind": "manual",
+        "text": entry.get("attestation"),
+        "attested_at": skipped_at,
+        "scan_verified": False,
+    }
+
+
+def active_false_positive_skip_ids(plan: PlanModel) -> frozenset[str]:
+    """Return exact skips that scan reconciliation will restore as false positives.
+
+    Only temporary skips expire via review_after. Explicit false-positive
+    skips remain active until removed or superseded.
+    """
+    superseded = plan.get("superseded", {})
+    return frozenset(
+        issue_id
+        for issue_id, entry in plan.get("skipped", {}).items()
+        if issue_id not in superseded
+        and isinstance(entry, dict)
+        and entry.get("kind") == "false_positive"
+    )
+
+
 def _sync_skipped_issue_statuses(plan: PlanModel, state: StateModel) -> None:
     """Sync state status for skipped issues that are still 'open'.
 
@@ -365,6 +432,36 @@ def _sync_skipped_issue_statuses(plan: PlanModel, state: StateModel) -> None:
         target_status = skip_kind_state_status(kind)
         if target_status and target_status != "open":
             issue["status"] = target_status
+            _restore_skip_resolution_metadata(issue, entry)
+
+
+def _purge_semantic_correction_uncommitted(
+    plan: PlanModel,
+    state: StateModel,
+    *,
+    result: ReconcileResult,
+) -> None:
+    """Drop system-invalidated findings from the pending commit ledger."""
+
+    issues = state.get("work_items") or state.get("issues", {})
+    uncommitted = plan.get("uncommitted_issues", [])
+    retained: list[str] = []
+    removed = 0
+    for issue_id in uncommitted:
+        issue = issues.get(issue_id)
+        attestation = issue.get("resolution_attestation", {}) if issue else {}
+        if (
+            issue
+            and issue.get("status") == "false_positive"
+            and isinstance(attestation, dict)
+            and attestation.get("kind") == "detector_semantic_correction"
+        ):
+            removed += 1
+            continue
+        retained.append(issue_id)
+    if removed:
+        plan["uncommitted_issues"] = retained
+        result.changes += removed
 
 
 def reconcile_plan_after_scan(
@@ -382,7 +479,7 @@ def reconcile_plan_after_scan(
     now = utc_now()
     now_dt = datetime.now(UTC)
 
-    _prune_existing_superseded_references(plan, result=result)
+    _prune_existing_superseded_references(plan, state, result=result)
     referenced_ids = _referenced_plan_issue_ids(plan)
 
     # Snapshot non-epic cluster sizes before superseding so we can detect
@@ -397,6 +494,7 @@ def reconcile_plan_after_scan(
     # Sync state status for issues in plan.skipped that are still "open" in state.
     # This migrates existing data: temporary skips → deferred, triaged_out skips → triaged_out.
     _sync_skipped_issue_statuses(plan, state)
+    _purge_semantic_correction_uncommitted(plan, state, result=result)
 
     _supersede_dead_references(
         plan,
@@ -456,4 +554,5 @@ def reconcile_plan_after_scan(
 __all__ = [
     "ReconcileResult",
     "reconcile_plan_after_scan",
+    "active_false_positive_skip_ids",
 ]

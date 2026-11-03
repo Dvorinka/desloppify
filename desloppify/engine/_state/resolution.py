@@ -3,14 +3,17 @@
 from __future__ import annotations
 
 import copy
+from collections.abc import Iterable
 
 __all__ = [
     "coerce_assessment_score",
     "match_issues",
+    "resolve_issue_ids",
     "resolve_issues",
 ]
 
 from desloppify.base.text_utils import is_numeric
+from desloppify.engine._state import _recompute_stats
 from desloppify.engine._state.filtering import _matches_pattern
 from desloppify.engine._state.issue_semantics import is_review_finding
 from desloppify.engine._state.schema import (
@@ -19,9 +22,6 @@ from desloppify.engine._state.schema import (
     utc_now,
     validate_state_invariants,
 )
-
-
-from desloppify.engine._state import _recompute_stats
 
 
 def _preserve_integrity_target(state: StateModel) -> float | None:
@@ -100,11 +100,18 @@ def _mark_stale_assessments_on_review_resolve(
 def match_issues(
     state: StateModel, pattern: str, status_filter: str = "open"
 ) -> list[dict]:
-    """Return issues matching *pattern* with the given status."""
+    """Return issues matching *pattern* with the given status.
+
+    A known full ID selects only that issue, even when its status or
+    suppression makes it ineligible. Explicit globs and incomplete prefixes
+    still select multiple issues.
+    """
     ensure_state_defaults(state)
+    exact_id = pattern in state["work_items"]
     return [
         issue
         for issue_id, issue in state["work_items"].items()
+        if not exact_id or issue_id == pattern
         if not issue.get("suppressed")
         if (status_filter == "all" or issue["status"] == status_filter)
         and _matches_pattern(issue_id, issue, pattern)
@@ -119,7 +126,44 @@ def resolve_issues(
     attestation: str | None = None,
 ) -> list[str]:
     """Set issue status for matches and return affected issue IDs."""
+    status_filter = "all" if status in {"open", "fixed"} else "open"
+    matches = match_issues(state, pattern, status_filter=status_filter)
+    return _resolve_matches(state, matches, status, note, attestation)
+
+
+def resolve_issue_ids(
+    state: StateModel,
+    issue_ids: Iterable[str],
+    status: str,
+    note: str | None = None,
+    attestation: str | None = None,
+) -> list[str]:
+    """Resolve exact IDs as one batch, recomputing statistics and validating once.
+
+    Unknown IDs, duplicates, suppressed issues, and ineligible current statuses
+    are ignored. Unlike ``resolve_issues``, IDs are never treated as patterns.
+    Affected IDs retain their input order.
+    """
     ensure_state_defaults(state)
+    issues = state["work_items"]
+    matches = [
+        issue
+        for issue_id in dict.fromkeys(issue_ids)
+        if (issue := issues.get(issue_id)) is not None
+        and not issue.get("suppressed")
+        and (status == "open" or issue["status"] == "open")
+    ]
+    return _resolve_matches(state, matches, status, note, attestation)
+
+
+def _resolve_matches(
+    state: StateModel,
+    matches: Iterable[dict],
+    status: str,
+    note: str | None,
+    attestation: str | None,
+) -> list[str]:
+    """Apply the shared resolution semantics and finalize a complete batch."""
     now = utc_now()
     resolved: list[str] = []
     resolved_issues: list[dict] = []
@@ -146,10 +190,11 @@ def resolve_issues(
             "detail": copy.deepcopy(original.get("detail", {})),
         }
 
-    status_filter = "all" if status == "open" else "open"
-    for issue in match_issues(state, pattern, status_filter=status_filter):
+    for issue in matches:
         previous_status = str(issue.get("status", "open")).strip() or "open"
         if status == "open" and previous_status == "open":
+            continue
+        if status == "fixed" and previous_status not in {"open", "auto_resolved"}:
             continue
 
         extra_updates: dict[str, object] = {}

@@ -23,6 +23,31 @@ def test_plan_persistence_defaults_follow_runtime_project_root(tmp_path):
     assert loaded["queue_order"] == ["review::a.py::issue-1"]
 
 
+def test_load_plan_honors_runtime_plan_file_override(tmp_path):
+    """`next/plan --state X` must read the plan beside X, not the default (#832).
+
+    cli.py sets runtime.plan_file = plan_path_for_state(--state); this pins
+    that load_plan() resolves through it.
+    """
+    from desloppify.engine.plan_state import plan_path_for_state
+
+    sibling = tmp_path / ".desloppify" / "rust"
+    sibling.mkdir(parents=True)
+    plan = empty_plan()
+    plan["queue_order"] = ["review::lib.rs::rust-1"]
+    persistence_mod.save_plan(plan, sibling / "plan.json")
+
+    state_path = sibling / "state-rust.json"
+    ctx = RuntimeContext(
+        project_root=tmp_path,
+        plan_file=plan_path_for_state(state_path),
+    )
+    with runtime_scope(ctx):
+        loaded = persistence_mod.load_plan()
+
+    assert loaded["queue_order"] == ["review::lib.rs::rust-1"]
+
+
 def test_plan_persistence_honors_monkeypatched_plan_file(monkeypatch, tmp_path):
     custom_plan_file = tmp_path / "custom" / "plan.json"
     monkeypatch.setattr(persistence_mod, "PLAN_FILE", custom_plan_file)

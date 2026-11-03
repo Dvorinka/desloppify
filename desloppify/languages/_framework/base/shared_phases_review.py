@@ -11,17 +11,15 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-logger = logging.getLogger(__name__)
-
 from desloppify.base.discovery.file_paths import rel
 from desloppify.base.output.terminal import log
+from desloppify.engine._state.filtering import make_issue
 from desloppify.engine.detectors.dupes import detect_duplicates
 from desloppify.engine.detectors.jscpd_adapter import detect_with_jscpd
 from desloppify.engine.detectors.security.detector import (
     detect_security_issues as _detect_security_issues_default,
 )
 from desloppify.engine.detectors.test_coverage.detector import detect_test_coverage
-from desloppify.engine._state.filtering import make_issue
 from desloppify.engine.policy.zones import EXCLUDED_ZONES, filter_entries
 from desloppify.languages._framework.base.types import (
     DetectorCoverageStatus,
@@ -41,11 +39,13 @@ from .shared_phases_helpers import (
     _record_detector_coverage,
 )
 
+logger = logging.getLogger(__name__)
+
 # Compatibility export for language phase modules that still import the raw
 # security detector symbol from this module.
 detect_security_issues = _detect_security_issues_default
 
-_DETECTOR_CACHE_VERSION = 1
+_DETECTOR_CACHE_VERSION = 2
 _PREFETCH_ATTR = "_shared_review_prefetch_futures"
 _FUNCTION_CACHE_ATTR = "_shared_review_function_cache"
 _PREFETCH_BOILERPLATE_KEY = "boilerplate"
@@ -461,8 +461,29 @@ def phase_boilerplate_duplication(
                 entries=entries,
             )
     if entries is None:
+        # jscpd failed — mark coverage reduced so the score is flagged
+        # incomplete rather than silently dropping the detector (#821).
+        _record_detector_coverage(
+            lang,
+            DetectorCoverageStatus(
+                detector="boilerplate_duplication",
+                status="reduced",
+                confidence=0.0,
+                summary="Boilerplate duplication detection skipped (jscpd unavailable or failed).",
+                impact="Duplication scoring reflects retained findings and prior potential, not a fresh measurement.",
+                remediation="Fix the jscpd/npx invocation and rescan.",
+                tool="jscpd",
+                reason="tool_error",
+            ),
+        )
         return [], {}
     entries = _filter_boilerplate_entries_by_zone(entries, lang.zone_map)
+    minimum_lines = max(1, int(getattr(lang, "boilerplate_min_lines", 4)))
+    entries = [
+        entry
+        for entry in entries
+        if int(entry.get("window_size", 0)) >= minimum_lines
+    ]
 
     issues: list[Issue] = []
     for entry in entries:
@@ -597,7 +618,10 @@ def phase_test_coverage(
     entries = filter_entries(zone_map, entries, "test_coverage")
 
     results = _entries_to_issues("test_coverage", entries, default_name="")
-    _log_phase_summary("test coverage", results, potential, "production files")
+    # Potential is a sqrt(LOC)-weighted sum, not a raw file count (#907).
+    _log_phase_summary(
+        "test coverage", results, potential, "weighted coverage units"
+    )
 
     return results, {"test_coverage": potential}
 

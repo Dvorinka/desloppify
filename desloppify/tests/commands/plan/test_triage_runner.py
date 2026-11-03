@@ -22,7 +22,11 @@ from desloppify.app.commands.plan.triage.runner.stage_validation import (
 from desloppify.engine._plan.triage.prompt import TriageInput
 
 
-def _make_triage_input(n_issues: int = 5) -> TriageInput:
+def _make_triage_input(
+    n_issues: int = 5,
+    *,
+    with_auto_cluster: bool = False,
+) -> TriageInput:
     """Create a minimal TriageInput for testing."""
     issues = {}
     for i in range(n_issues):
@@ -34,9 +38,28 @@ def _make_triage_input(n_issues: int = 5) -> TriageInput:
             "summary": f"Issue {i} summary",
             "detail": {"dimension": f"dim_{i % 3}", "suggestion": "Fix it"},
         }
+    objective_backlog_issues = {}
+    auto_clusters = {}
+    if with_auto_cluster:
+        objective_backlog_issues = {
+            "unused::src/legacy.py::dead": {
+                "detector": "unused",
+                "summary": "Unused legacy export",
+                "file": "src/legacy.py",
+                "confidence": "high",
+            }
+        }
+        auto_clusters = {
+            "auto/unused-imports": {
+                "auto": True,
+                "issue_ids": ["unused::src/legacy.py::dead"],
+                "description": "Remove the unused legacy export",
+            }
+        }
     return TriageInput(
         review_issues=issues,
-        objective_backlog_issues={},
+        objective_backlog_issues=objective_backlog_issues,
+        auto_clusters=auto_clusters,
         existing_clusters={},
         dimension_scores={"dim_0": {"score": 70, "strict": 65, "failing": 2}},
         new_since_last=set(),
@@ -69,6 +92,28 @@ def test_build_reflect_prompt_includes_prior(tmp_path: Path) -> None:
     assert "## Coverage Ledger Template" in prompt
     assert "-> TODO" in prompt
     assert "exactly once" in prompt
+
+
+def test_staged_prompts_omit_legacy_auto_cluster_decision_contract(tmp_path: Path) -> None:
+    si = _make_triage_input(with_auto_cluster=True)
+
+    observe_prompt = build_stage_prompt("observe", si, {}, repo_root=tmp_path)
+    reflect_prompt = build_stage_prompt(
+        "reflect",
+        si,
+        {"observe": "My observation report about themes and root causes."},
+        repo_root=tmp_path,
+    )
+
+    for prompt in (observe_prompt, reflect_prompt):
+        assert "## Auto-cluster candidates (1 items: 1 in 1 auto-clusters, 0 unclustered)" in prompt
+        assert "### Auto-clusters" in prompt
+        assert "- auto/unused-imports (1 items)" in prompt
+        assert "`auto_cluster_decisions`" not in prompt
+        assert "defer (keep in backlog" not in prompt
+        assert "### Auto-clusters (decision required for each)" not in prompt
+
+    assert "supersede" in reflect_prompt
 
 
 def test_build_stage_prompt_places_prior_reports_before_issue_data(tmp_path: Path) -> None:
@@ -867,6 +912,36 @@ def test_validate_completion_ignores_out_of_scope_clusters_for_frozen_triage(tmp
 def test_validate_stage_organize_allows_zero_issue_noop(tmp_path: Path) -> None:
     plan = _plan_with_stages(organize={"report": "x" * 150})
     ok, msg = validate_stage("organize", plan, {"issues": {}}, tmp_path, triage_input=_make_triage_input(0))
+    assert ok
+    assert msg == ""
+
+
+def test_validate_stage_enrich_ignores_legacy_clusters_for_empty_frozen_scope(
+    tmp_path: Path,
+) -> None:
+    plan = _plan_with_stages(enrich={"report": "x" * 150})
+    plan["epic_triage_meta"]["active_triage_issue_ids"] = []
+    plan["clusters"] = {
+        "legacy": {
+            "issue_ids": ["review::legacy"],
+            "execution_status": "done",
+            "action_steps": [{"title": "underspecified legacy step"}],
+        },
+    }
+    state = {
+        "issues": {
+            "review::legacy": {"status": "fixed", "detector": "review"},
+        },
+    }
+
+    ok, msg = validate_stage(
+        "enrich",
+        plan,
+        state,
+        tmp_path,
+        triage_input=_make_triage_input(0),
+    )
+
     assert ok
     assert msg == ""
 

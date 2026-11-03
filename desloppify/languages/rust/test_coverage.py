@@ -2,18 +2,28 @@
 
 from __future__ import annotations
 
+import functools
 import re
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from desloppify.languages.rust.support import (
+    RustProductionFileIndex,
+    build_production_file_index,
     build_workspace_package_index,
+    build_production_file_index,
     describe_rust_file,
     find_workspace_root,
+    iter_mod_targets,
     iter_use_specs,
+    iter_include_files,
     match_production_candidate,
     normalize_rust_body,
+    read_text_or_none,
     resolve_barrel_targets,
+    resolve_mod_declaration,
     resolve_use_spec,
+    resolve_include_file,
+    read_text_or_none,
     strip_rust_comments,
 )
 
@@ -26,6 +36,7 @@ ASSERT_PATTERNS = [
         r"\bdebug_assert!",
         r"\bmatches!",
         r"\binsta::assert_",
+        r"\bassert_[A-Za-z0-9_]*\s*\(",
     ]
 ]
 MOCK_PATTERNS = [
@@ -53,9 +64,75 @@ _LOGIC_RE = re.compile(
 def has_testable_logic(filepath: str, content: str) -> bool:
     """Return True when a Rust file contains runtime logic worth testing."""
     path = filepath.replace("\\", "/")
-    if "/tests/" in path or "/examples/" in path or "/benches/" in path:
+    parts = PurePosixPath(path).parts
+    if (
+        any(part == "tests" or part.endswith("_tests") for part in parts)
+        or "/examples/" in path
+        or "/benches/" in path
+    ):
         return False
     return bool(_LOGIC_RE.search(strip_rust_comments(content)))
+
+
+def promote_owner_covered_files(
+    directly_tested: set[str],
+    transitively_tested: set[str],
+    production_files: set[str] | None = None,
+) -> set[str]:
+    """Credit Rust child modules exercised through a tested owner boundary.
+
+    Rust commonly keeps behavioral tests beside ``domain.rs`` while splitting
+    its implementation into ``domain/*.rs``. Requiring duplicate test modules
+    in every child rewards file locality instead of behavioral coverage. Only
+    descendants of a directly tested non-crate-root module are promoted;
+    unrelated dependencies remain transitive coverage gaps.
+    """
+    owner_roots: list[PurePosixPath] = []
+    for owner in directly_tested:
+        path = PurePosixPath(owner.replace("\\", "/"))
+        if path.name in {"lib.rs", "main.rs"}:
+            continue
+        owner_roots.append(path.parent if path.name == "mod.rs" else path.with_suffix(""))
+
+    declared_owner: dict[str, str] = {}
+    direct_declaring_owners: set[str] = set()
+    if production_files:
+        production_index = _production_index_for(frozenset(production_files))
+        for parent in production_files:
+            content = read_text_or_none(parent)
+            if content is None:
+                continue
+            for module_name, declared_path in iter_mod_targets(content):
+                target = resolve_mod_declaration(
+                    module_name,
+                    parent,
+                    production_files,
+                    declared_path=declared_path,
+                    production_index=production_index,
+                )
+                if target:
+                    declared_owner[target] = parent
+        direct_declaring_owners = {
+            owner
+            for target in directly_tested
+            if (owner := declared_owner.get(target)) is not None
+        }
+
+    promoted: set[str] = set()
+    for candidate in transitively_tested:
+        if declared_owner.get(candidate) in direct_declaring_owners:
+            promoted.add(candidate)
+            continue
+        path = PurePosixPath(candidate.replace("\\", "/"))
+        for owner_root in owner_roots:
+            try:
+                relative = path.relative_to(owner_root)
+            except ValueError:
+                continue
+            if relative.parts:
+                promoted.add(candidate)
+                break
+    return promoted
 
 
 def has_inline_tests(_filepath: str, content: str) -> bool:
@@ -78,19 +155,71 @@ def resolve_import_spec(
     spec: str, test_path: str, production_files: set[str]
 ) -> str | None:
     """Resolve Rust `use` specs from test files to production modules."""
-    package_index = build_workspace_package_index(find_workspace_root(test_path))
-    return resolve_use_spec(spec, test_path, production_files, package_index)
+    context = describe_rust_file(test_path)
+    package_index = _workspace_package_index_for(context.manifest_dir)
+    production_index = _production_index_for(frozenset(production_files))
+    return resolve_use_spec(
+        spec,
+        test_path,
+        production_files,
+        package_index,
+        production_index=production_index,
+    )
 
 
 def resolve_barrel_reexports(filepath: str, production_files: set[str]) -> set[str]:
     """Expand Rust facade files such as `lib.rs` to their re-exported modules."""
     package_index = build_workspace_package_index(find_workspace_root(filepath))
-    return resolve_barrel_targets(filepath, production_files, package_index)
+    production_index = _production_index_for(frozenset(production_files))
+    return resolve_barrel_targets(
+        filepath,
+        production_files,
+        package_index,
+        production_index=production_index,
+    )
+
+
+@functools.lru_cache(maxsize=512)
+def _workspace_package_index_for(manifest_dir: Path) -> dict[str, Path]:
+    return build_workspace_package_index(find_workspace_root(manifest_dir))
 
 
 def parse_test_import_specs(content: str) -> list[str]:
     """Extract Rust test import specs from source text."""
     return iter_use_specs(content)
+
+
+def expand_direct_test_targets(
+    directly_tested: set[str],
+    production_files: set[str],
+) -> set[str]:
+    """Treat textually included Rust source as part of its tested owner.
+
+    ``include!`` does not create a Rust module boundary: the included tokens
+    are compiled in the including module. A direct test of that owner is
+    therefore also a direct test of every recursively included source file.
+    """
+    production_index = build_production_file_index(production_files)
+    expanded: set[str] = set()
+    queue = list(directly_tested)
+    visited = set(queue)
+    while queue:
+        owner = queue.pop()
+        content = read_text_or_none(owner)
+        if content is None:
+            continue
+        for include_path in iter_include_files(content):
+            target = resolve_include_file(
+                include_path,
+                owner,
+                production_files,
+                production_index=production_index,
+            )
+            if target is not None and target not in visited:
+                visited.add(target)
+                expanded.add(target)
+                queue.append(target)
+    return expanded
 
 
 def map_test_to_source(test_path: str, production_set: set[str]) -> str | None:
@@ -117,8 +246,13 @@ def map_test_to_source(test_path: str, production_set: set[str]) -> str | None:
         context.manifest_dir / "src" / f"{stem}.rs",
         context.manifest_dir / "src" / stem / "mod.rs",
     ]
+    production_index = _production_index_for(frozenset(production_set))
     for candidate in candidates:
-        resolved = _candidate_matches(candidate, production_set)
+        resolved = _candidate_matches(
+            candidate,
+            production_set,
+            production_index=production_index,
+        )
         if resolved:
             return resolved
     return None
@@ -138,8 +272,24 @@ def strip_comments(content: str) -> str:
     return strip_rust_comments(content)
 
 
-def _candidate_matches(candidate: Path, production_files: set[str]) -> str | None:
-    return match_production_candidate(candidate, production_files)
+@functools.lru_cache(maxsize=8)
+def _production_index_for(
+    production_files: frozenset[str],
+) -> RustProductionFileIndex:
+    return build_production_file_index(set(production_files))
+
+
+def _candidate_matches(
+    candidate: Path,
+    production_files: set[str],
+    *,
+    production_index: RustProductionFileIndex | None = None,
+) -> str | None:
+    return match_production_candidate(
+        candidate,
+        production_files,
+        production_index=production_index,
+    )
 
 
 __all__ = [
@@ -150,9 +300,11 @@ __all__ = [
     "TEST_FUNCTION_RE",
     "has_inline_tests",
     "has_testable_logic",
+    "expand_direct_test_targets",
     "is_runtime_entrypoint",
     "map_test_to_source",
     "parse_test_import_specs",
+    "promote_owner_covered_files",
     "resolve_barrel_reexports",
     "resolve_import_spec",
     "strip_comments",

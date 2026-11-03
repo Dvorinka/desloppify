@@ -4,11 +4,15 @@ from __future__ import annotations
 
 import logging
 
+from desloppify.base.config import load_config
 from desloppify.base.output.terminal import colorize
 from desloppify.engine._work_queue.context import (
     queue_context,
 )
-from desloppify.engine._work_queue.plan_order import collapse_clusters
+from desloppify.engine._work_queue.plan_order import (
+    collapse_clusters,
+    filter_cluster_focus,
+)
 from desloppify.engine._work_queue.core import QueueBuildOptions
 from desloppify.engine.planning.queue_policy import build_execution_queue
 
@@ -31,11 +35,16 @@ def _front_item_ids(front_item: dict) -> tuple[str, set[str]]:
 
 
 def _resolve_target_ids(patterns: list[str], clusters: dict) -> set[str]:
+    """Expand patterns to the open issue IDs they target.
+
+    A cluster name resolves to its member IDs only — not the token
+    itself — so `resolve <cluster>` is judged by the same queue-order
+    policy as resolving the member IDs explicitly (#898).
+    """
     resolved_ids: set[str] = set()
     for pattern in patterns:
         if pattern in clusters:
             resolved_ids.update(clusters[pattern].get("issue_ids", []))
-            resolved_ids.add(pattern)
             continue
         resolved_ids.add(pattern)
     return resolved_ids
@@ -128,17 +137,23 @@ def _check_queue_order_guard(
     if not queue_order:
         return False
 
-    ctx = queue_context(state, plan=plan)
+    ctx = queue_context(state, config=load_config(), plan=plan)
     result = build_work_queue(
         state,
         options=QueueBuildOptions(
             count=None,
             include_subjective=True,
+            subjective_threshold=ctx.target_strict,
             context=ctx,
         ),
     )
     items = result["items"]
-    if not plan.get("active_cluster"):
+    # Mirror `next`: with an active cluster focus, items outside the cluster
+    # (including synthetic subjective assessment work) are not the user's
+    # "next" — resolve eligibility must follow the same view.
+    if plan.get("active_cluster"):
+        items = filter_cluster_focus(items, plan, plan.get("active_cluster"))
+    else:
         items = collapse_clusters(items, plan)
     if not items:
         return False

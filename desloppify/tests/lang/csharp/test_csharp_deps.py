@@ -83,6 +83,149 @@ def test_build_dep_graph_simple_app():
     assert graph[greeter]["importer_count"] >= 1
 
 
+@pytest.mark.parametrize("namespace_style", ["file", "block"])
+def test_build_dep_graph_resolves_same_namespace_type_references(tmp_path, namespace_style):
+    def source(body):
+        if namespace_style == "file":
+            return f"namespace Demo.App;\n{body}\n"
+        return f"namespace Demo.App {{\n{body}\n}}\n"
+
+    program = tmp_path / "Program.cs"
+    helper = tmp_path / "Rendering.cs"
+    unused = tmp_path / "Unused.cs"
+    program.write_text(source("class Program { Renderer renderer = new(); }"))
+    helper.write_text(source("class Renderer {}"))
+    unused.write_text(source("class Unused {}"))
+
+    graph = build_dep_graph(tmp_path)
+
+    assert str(helper) in graph[str(program)]["imports"]
+    assert graph[str(helper)]["importers"] == {str(program)}
+    assert graph[str(unused)]["importer_count"] == 0
+    assert str(program) not in graph[str(helper)]["imports"]
+
+
+def test_build_dep_graph_same_namespace_ignores_comments_and_literals(tmp_path):
+    program = tmp_path / "Program.cs"
+    program.write_text('''namespace Demo.App;
+class Program {
+    // Unused CommentType
+    /* BlockType */
+    string text = "StringType";
+    string verbatim = @"VerbatimType ""Unused""";
+    string raw = """RawType "Unused""";
+}
+''')
+    for name in ["Unused", "CommentType", "BlockType", "StringType", "VerbatimType", "RawType"]:
+        (tmp_path / f"{name}.cs").write_text(f"namespace Demo.App;\nclass {name} {{}}")
+
+    graph = build_dep_graph(tmp_path)
+
+    assert graph[str(program)]["imports"] == set()
+
+
+def test_build_dep_graph_same_namespace_respects_project_references(tmp_path):
+    paths = {}
+    for name in ["App", "Referenced", "Unreferenced"]:
+        directory = tmp_path / name
+        directory.mkdir()
+        paths[name] = directory
+        references = '<ItemGroup><ProjectReference Include="../Referenced/Referenced.csproj" /></ItemGroup>' if name == "App" else ""
+        (directory / f"{name}.csproj").write_text(f'<Project Sdk="Microsoft.NET.Sdk">{references}</Project>')
+    program = paths["App"] / "Program.cs"
+    program.write_text("namespace Shared;\nclass Program { Helper helper; Unavailable unavailable; }")
+    helper = paths["Referenced"] / "Helper.cs"
+    helper.write_text("namespace Shared;\nclass Helper {}")
+    unavailable = paths["Unreferenced"] / "Unavailable.cs"
+    unavailable.write_text("namespace Shared;\nclass Unavailable {}")
+
+    graph = build_dep_graph(tmp_path)
+
+    assert str(helper) in graph[str(program)]["imports"]
+    assert str(unavailable) not in graph[str(program)]["imports"]
+
+
+@pytest.mark.parametrize("directive", ["using static Demo.App.Palette;", "using Colors = Demo.App.Palette;"])
+def test_build_dep_graph_type_using_does_not_import_entire_namespace(tmp_path, directive):
+    program = tmp_path / "Program.cs"
+    palette = tmp_path / "Palette.cs"
+    unused = tmp_path / "Unused.cs"
+    program.write_text(f"{directive}\nnamespace Demo.Client;\nclass Program {{}}")
+    palette.write_text("namespace Demo.App;\nstatic class Palette {}")
+    unused.write_text("namespace Demo.App;\nclass Unused {}")
+
+    graph = build_dep_graph(tmp_path)
+
+    assert graph[str(program)]["imports"] == {str(palette)}
+    assert graph[str(unused)]["importer_count"] == 0
+
+
+@pytest.mark.parametrize("unused_name", ["Unused", "Services"])
+def test_build_dep_graph_namespace_using_requires_referenced_symbol(tmp_path, unused_name):
+    program = tmp_path / "Program.cs"
+    helper = tmp_path / "Helper.cs"
+    unused = tmp_path / f"{unused_name}.cs"
+    program.write_text('''using Demo.Services;
+namespace Demo.App;
+class Program {
+    Helper helper = new();
+    // Unused
+    string label = "Unused";
+}
+''')
+    helper.write_text("namespace Demo.Services;\nclass Helper {}")
+    unused.write_text(f"namespace Demo.Services;\nclass {unused_name} {{}}")
+
+    graph = build_dep_graph(tmp_path)
+
+    assert graph[str(program)]["imports"] == {str(helper)}
+    assert graph[str(unused)]["importer_count"] == 0
+
+
+def test_build_dep_graph_namespace_using_preserves_extension_method_reference(tmp_path):
+    program = tmp_path / "Program.cs"
+    extension = tmp_path / "TextExtensions.cs"
+    unused = tmp_path / "Unused.cs"
+    program.write_text('''using Demo.Extensions;
+namespace Demo.App;
+class Program { string text = "example".NormalizeText(); }
+''')
+    extension.write_text('''namespace Demo.Extensions;
+static class TextExtensions {
+    public static string NormalizeText(this string value) => value.Trim();
+}
+''')
+    unused.write_text("namespace Demo.Extensions;\nclass Unused {}")
+
+    graph = build_dep_graph(tmp_path)
+
+    assert graph[str(program)]["imports"] == {str(extension)}
+    assert graph[str(unused)]["importer_count"] == 0
+
+
+def test_build_dep_graph_namespace_using_preserves_attribute_shorthand(tmp_path):
+    program = tmp_path / "Program.cs"
+    attribute = tmp_path / "MarkAttribute.cs"
+    program.write_text("using Demo.Attributes;\nnamespace Demo.App;\n[Mark] class Program {}")
+    attribute.write_text("namespace Demo.Attributes;\nclass MarkAttribute : System.Attribute {}")
+
+    graph = build_dep_graph(tmp_path)
+
+    assert graph[str(program)]["imports"] == {str(attribute)}
+
+
+@pytest.mark.parametrize("declaration", ["class", "struct", "interface", "enum", "record", "record class", "record struct"])
+def test_build_dep_graph_same_namespace_supports_type_declarations(tmp_path, declaration):
+    program = tmp_path / "Program.cs"
+    helper = tmp_path / "Helpers.cs"
+    program.write_text("namespace Demo;\nclass Program { Helper helper; }")
+    helper.write_text(f"namespace Demo;\n{declaration} Helper {{}}")
+
+    graph = build_dep_graph(tmp_path)
+
+    assert str(helper) in graph[str(program)]["imports"]
+
+
 def test_build_dep_graph_project_reference():
     root = _fixture_root("multi_project")
     graph = build_dep_graph(root)
@@ -171,7 +314,7 @@ def test_build_dep_graph_uses_project_assets_for_transitive_project_references(
     helper = lib_dir / "Helper.cs"
     core_file = core_dir / "CoreService.cs"
     program.write_text(
-        "\n".join(["using Demo.Core;", "namespace Demo.App;", "class Program {}"])
+        "\n".join(["using Demo.Core;", "namespace Demo.App;", "class Program { CoreService service; }"])
     )
     helper.write_text("\n".join(["namespace Demo.Lib;", "class Helper {}"]))
     core_file.write_text("\n".join(["namespace Demo.Core;", "class CoreService {}"]))
@@ -220,7 +363,7 @@ def test_build_dep_graph_ignores_invalid_project_assets_json(tmp_path):
     program = app_dir / "Program.cs"
     helper = lib_dir / "Helper.cs"
     program.write_text(
-        "\n".join(["using Demo.Lib;", "namespace Demo.App;", "class Program {}"])
+        "\n".join(["using Demo.Lib;", "namespace Demo.App;", "class Program { Helper helper; }"])
     )
     helper.write_text("\n".join(["namespace Demo.Lib;", "class Helper {}"]))
 
@@ -335,7 +478,7 @@ def test_build_dep_graph_falls_back_when_roslyn_command_fails(tmp_path, monkeypa
     service = tmp_path / "Services" / "Greeter.cs"
     service.parent.mkdir(parents=True, exist_ok=True)
     program.write_text(
-        "\n".join(["using Demo.Services;", "namespace DemoApp;", "class Program {}"])
+        "\n".join(["using Demo.Services;", "namespace DemoApp;", "class Program { Greeter greeter; }"])
     )
     service.write_text("\n".join(["namespace Demo.Services;", "class Greeter {}"]))
 
@@ -366,7 +509,7 @@ def test_build_dep_graph_uses_fallback_when_roslyn_payload_too_large(
     service = tmp_path / "Services" / "Greeter.cs"
     service.parent.mkdir(parents=True, exist_ok=True)
     program.write_text(
-        "\n".join(["using Demo.Services;", "namespace DemoApp;", "class Program {}"])
+        "\n".join(["using Demo.Services;", "namespace DemoApp;", "class Program { Greeter greeter; }"])
     )
     service.write_text("\n".join(["namespace Demo.Services;", "class Greeter {}"]))
 
@@ -458,3 +601,107 @@ def test_build_dep_graph_heuristic_matches_roslyn_multi_project(monkeypatch):
     assert _edge_set_within_root(heuristic_graph, root) == _edge_set_within_root(
         roslyn_graph, root
     )
+
+
+def test_build_dep_graph_resolves_fully_qualified_references(tmp_path):
+    """#683: FQ type references need no using and must still create edges."""
+    commands = tmp_path / "Commands"
+    commands.mkdir()
+    program = tmp_path / "Program.cs"
+    vocab = commands / "VocabCommand.cs"
+    unused = commands / "Unused.cs"
+    program.write_text(
+        "namespace Demo.Cli;\n"
+        "class Program {\n"
+        "    static void Main() {\n"
+        "        Demo.Cli.Commands.VocabCommand.Create();\n"
+        "    }\n"
+        "}\n"
+    )
+    vocab.write_text("namespace Demo.Cli.Commands;\nclass VocabCommand {}\n")
+    unused.write_text("namespace Demo.Cli.Commands;\nclass Unused {}\n")
+
+    graph = build_dep_graph(tmp_path)
+
+    assert str(vocab) in graph[str(program)]["imports"]
+    assert str(program) in graph[str(vocab)]["importers"]
+    assert str(unused) not in graph[str(program)]["imports"]
+    assert graph[str(unused)]["importer_count"] == 0
+
+
+def test_build_dep_graph_qualified_ref_respects_project_boundaries(tmp_path):
+    """Qualified refs into unreferenced projects must not create edges."""
+    app_dir = tmp_path / "app"
+    lib_dir = tmp_path / "lib"
+    app_dir.mkdir()
+    lib_dir.mkdir()
+    (app_dir / "app.csproj").write_text(
+        '<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup>'
+        "<RootNamespace>Demo.App</RootNamespace></PropertyGroup></Project>"
+    )
+    (lib_dir / "lib.csproj").write_text(
+        '<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup>'
+        "<RootNamespace>Demo.Lib</RootNamespace></PropertyGroup></Project>"
+    )
+    program = app_dir / "Program.cs"
+    program.write_text(
+        "namespace Demo.App;\n"
+        "class Program {\n"
+        "    static void Main() {\n"
+        "        Demo.Lib.Service.Run();\n"
+        "    }\n"
+        "}\n"
+    )
+    service = lib_dir / "Service.cs"
+    service.write_text("namespace Demo.Lib;\nclass Service {}\n")
+
+    graph = build_dep_graph(tmp_path)
+
+    assert str(service) not in graph[str(program)]["imports"]
+    assert graph[str(service)]["importer_count"] == 0
+
+
+def test_build_dep_graph_binds_inferred_property_receivers(tmp_path):
+    """#893: `store.Items.Add()` binds the member's declared type directly."""
+    src = tmp_path / "src"
+    tests = tmp_path / "tests"
+    src.mkdir()
+    tests.mkdir()
+    (src / "Store.cs").write_text(
+        "namespace Sample;\n"
+        "public sealed class Store {\n"
+        "    public Inventory Items { get; } = new();\n"
+        "    public void Restock(int amount) { Items.Add(amount); }\n"
+        "}\n"
+    )
+    (src / "Inventory.cs").write_text(
+        "namespace Sample;\n"
+        "public sealed class Inventory {\n"
+        "    public void Add(int amount) {}\n"
+        "    public bool Take(int amount) => true;\n"
+        "}\n"
+    )
+    (src / "UnusedSibling.cs").write_text(
+        "namespace Sample;\npublic sealed class UnusedSibling {}\n"
+    )
+    (tests / "StoreBehaviorTests.cs").write_text(
+        "using Sample;\n"
+        "public sealed class StoreBehaviorTests {\n"
+        "    public void Works() {\n"
+        "        var store = new Store();\n"
+        "        store.Items.Add(2);\n"
+        "        store.Items.Take(1);\n"
+        "    }\n"
+        "}\n"
+    )
+
+    graph = build_dep_graph(tmp_path)
+    test_file = str(tests / "StoreBehaviorTests.cs")
+    inventory = str(src / "Inventory.cs")
+    unused = str(src / "UnusedSibling.cs")
+
+    # Direct receiver binding: the test touches store.Items (Inventory), so
+    # Inventory.cs is a direct import — not transitive-only through Store.
+    assert inventory in graph[test_file]["imports"]
+    assert unused not in graph[test_file]["imports"]
+    assert graph[unused]["importer_count"] == 0

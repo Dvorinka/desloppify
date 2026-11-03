@@ -46,6 +46,24 @@ BARREL_BASENAMES: set[str] = set()
 
 # Common source layout prefixes for src-layout projects (PEP 621).
 _SRC_PREFIXES = ("src/",)
+_MAIN_GUARD_RE = re.compile(
+    r"if\s+__name__\s*==\s*[\"']__main__[\"']"
+)
+_SELFTEST_DEF_RE = re.compile(
+    r"^\s*def\s+\w*selftest\w*\s*\(", re.MULTILINE
+)
+# Reachable entry wiring for the --selftest convention: an argv flag or a
+# direct call inside the module body.
+_SELFTEST_ENTRY_RE = re.compile(
+    r"--selftest\b|^\s*\w*selftest\w*\s*\(\s*\)", re.MULTILINE
+)
+_RUNPY_PATH_RE = re.compile(r"runpy\.run_path\s*\(([^\n]*)")
+# importlib-style explicit file loads (#905): spec_from_file_location /
+# SourceFileLoader / imp.load_source carry the target as a .py literal.
+_IMPORTLIB_PATH_RE = re.compile(
+    r"(?:spec_from_file_location|SourceFileLoader|load_source)\s*\(([^\n]*)"
+)
+_PY_FILE_STR_RE = re.compile(r"[\"']([^\"']+\.py)[\"']")
 
 
 def has_testable_logic(filepath: str, content: str) -> bool:
@@ -54,11 +72,42 @@ def has_testable_logic(filepath: str, content: str) -> bool:
     return bool(_PY_DEF_RE.search(content))
 
 
+def has_inline_tests(filepath: str, content: str) -> bool:
+    """True when a module wires an executable in-file test entry point (#758).
+
+    Requires both evidence of a check function and a reachable __main__
+    entry point — a bare ``def selftest`` alone is not proof of coverage.
+    """
+    del filepath
+    if _MAIN_GUARD_RE.search(content) is None:
+        return False
+    if _SELFTEST_DEF_RE.search(content) and _SELFTEST_ENTRY_RE.search(content):
+        return True
+    return bool(TEST_FUNCTION_RE.search(content))
+
+
 def resolve_import_spec(
     spec: str, test_path: str, production_files: set[str]
 ) -> str | None:
     """Best-effort module-spec to source-file resolution for direct imports."""
-    module_path = spec.strip().replace(".", "/")
+    spec = spec.strip().strip("\"'")
+    # File-path specs (runpy.run_path & friends, #814): resolve by sibling
+    # path or basename match, not as a dotted module.
+    if spec.endswith(".py"):
+        if "/" not in spec:
+            for prod in production_files:
+                if prod.replace("\\", "/").rsplit("/", 1)[-1] == spec:
+                    return prod
+        for prod in production_files:
+            normalized = prod.replace("\\", "/")
+            if normalized.endswith(f"/{spec}") or normalized == spec:
+                return prod
+        if test_path:
+            sibling = os.path.join(os.path.dirname(test_path), spec)
+            if sibling in production_files:
+                return sibling
+        return None
+    module_path = spec.replace(".", "/")
     if not module_path or module_path.startswith("/"):
         return None
 
@@ -78,6 +127,21 @@ def resolve_import_spec(
             sibling = os.path.join(os.path.dirname(test_path), candidate)
             if sibling in production_files:
                 return sibling
+    # Scan-root fallback (#907): tests outside the scan root import relative
+    # to the scanned package root — `from routes.math_ops import x` while the
+    # file lives at `service/routes/math_ops.py`. Accept a suffix match only
+    # when exactly one production file qualifies; parallel services with
+    # same-named modules stay honestly unresolved.
+    matches = [
+        prod
+        for prod in production_files
+        if any(
+            prod.replace("\\", "/").endswith(f"/{candidate}")
+            for candidate in candidates
+        )
+    ]
+    if len(matches) == 1:
+        return matches[0]
     return None
 
 
@@ -105,6 +169,12 @@ def parse_test_import_specs(content: str) -> list[str]:
             specs.append(package)
             if imported_name:
                 specs.append(f"{package}.{imported_name}")
+    # runpy.run_path(...) targets are file paths, not module specs (#814).
+    # importlib loaders follow the same rule (#905).
+    for m in _RUNPY_PATH_RE.finditer(content):
+        specs.extend(_PY_FILE_STR_RE.findall(m.group(1)))
+    for m in _IMPORTLIB_PATH_RE.finditer(content):
+        specs.extend(_PY_FILE_STR_RE.findall(m.group(1)))
     return specs
 
 
@@ -130,6 +200,13 @@ def map_test_to_source(test_path: str, production_set: set[str]) -> str | None:
         if parent:
             candidates.append(os.path.join(parent, src))
 
+    # X_selftest.py -> X.py (#771)
+    if basename.endswith("_selftest.py"):
+        src = basename[:-12] + ".py"
+        candidates.append(os.path.join(dirname, src))
+        if parent:
+            candidates.append(os.path.join(parent, src))
+
     for prod in production_set:
         prod_base = os.path.basename(prod)
         for c in candidates:
@@ -147,6 +224,9 @@ def strip_test_markers(basename: str) -> str | None:
     """Strip Python test naming markers to derive a source basename."""
     if basename.startswith("test_"):
         return basename[5:]
+    selftest = "_selftest.py"
+    if basename.endswith(selftest):
+        return basename[: -len(selftest)] + ".py"
     suffix = "_test.py"
     if basename.endswith(suffix):
         stem = basename[: -len(suffix)]

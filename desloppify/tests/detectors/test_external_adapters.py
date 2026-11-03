@@ -499,12 +499,13 @@ class TestBanditExcludeIntegration:
         config = PythonConfig()
         captured_kwargs = {}
 
-        def _fake_bandit(path, zone_map, **kwargs):
+        def _fake_bandit(discovered_files, zone_map, **kwargs):
             from desloppify.languages.python.detectors.bandit_adapter import (
                 BanditRunStatus,
                 BanditScanResult,
             )
 
+            captured_kwargs["files"] = discovered_files
             captured_kwargs.update(kwargs)
             return BanditScanResult(
                 entries=[], files_scanned=0, status=BanditRunStatus(state="ok")
@@ -513,7 +514,7 @@ class TestBanditExcludeIntegration:
         fake_exclude_dirs = ["/project/src/.venv", "/project/src/__pycache__", "/project/src/vendor"]
         files = ["/project/src/app.py", "/project/src/utils.py"]
         with patch(
-            "desloppify.languages.python._security.detect_with_bandit", _fake_bandit
+            "desloppify.languages.python._security.detect_with_bandit_files", _fake_bandit
         ), patch(
             "desloppify.languages.python._security.collect_exclude_dirs",
             return_value=fake_exclude_dirs,
@@ -523,6 +524,7 @@ class TestBanditExcludeIntegration:
         exclude_dirs = captured_kwargs.get("exclude_dirs", [])
         # Should pass through whatever collect_exclude_dirs returns.
         assert exclude_dirs == fake_exclude_dirs
+        assert captured_kwargs["files"] == files
 
 
 # ── jscpd adapter ────────────────────────────────────────────────────────────
@@ -661,6 +663,55 @@ class TestJscpdAdapter:
         }
         result = _parse_jscpd_report(report, tmp_path)
         assert result == []
+
+    def test_runs_jscpd_from_isolated_cwd(self, tmp_path):
+        """npx must not evaluate the workspace package.json (#941).
+
+        Scan path is passed absolute; the subprocess cwd is the neutral
+        output tempdir so devEngines in the target project is never read.
+        """
+        captured: dict = {}
+
+        def fake_run(cmd, *, timeout, cwd=None):
+            captured["cmd"] = cmd
+            captured["cwd"] = cwd
+            raise subprocess.CalledProcessError(1, cmd)
+
+        with patch(
+            "desloppify.engine.detectors.jscpd_adapter._resolve_jscpd_command",
+            return_value=["/usr/bin/npx", "--yes", "jscpd"],
+        ), patch(
+            "desloppify.engine.detectors.jscpd_adapter._run_jscpd_command",
+            side_effect=fake_run,
+        ):
+            assert detect_with_jscpd(tmp_path) is None
+
+        assert captured["cwd"] is not None
+        assert Path(captured["cwd"]) != tmp_path
+        # The scan target is passed as an absolute path so the neutral cwd
+        # cannot break resolution.
+        scan_arg = captured["cmd"][captured["cmd"].index("jscpd") + 1]
+        assert scan_arg == str(tmp_path.resolve())
+
+    def test_parses_scan_relative_report_names(self, tmp_path):
+        """jscpd may emit paths relative to the scan root, not absolute."""
+        (tmp_path / "src").mkdir()
+        report = {
+            "duplicates": [
+                {
+                    "fragment": "x = 1\ny = 2\nz = 3\nw = 4",
+                    "lines": 4,
+                    "firstFile": {"name": "src/a.ts", "start": 1},
+                    "secondFile": {"name": "src/b.ts", "start": 5},
+                }
+            ]
+        }
+        result = _parse_jscpd_report(report, tmp_path)
+        assert len(result) == 1
+        assert {loc["file"] for loc in result[0]["locations"]} == {
+            "src/a.ts",
+            "src/b.ts",
+        }
 
     def test_sample_extracted_from_fragment(self, tmp_path):
         f1 = str(tmp_path / "a.py")
@@ -955,12 +1006,44 @@ from desloppify.base.discovery.source import collect_exclude_dirs  # noqa: E402
 
 
 class TestCollectExcludeDirs:
+    def test_relative_scan_root_returns_absolute_exclusions(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        with patch(
+            "desloppify.base.discovery.source.get_exclusions", return_value=(".cache",)
+        ):
+            result = collect_exclude_dirs(Path("."))
+        assert str(tmp_path / ".cache") in result
+        assert all(Path(path).is_absolute() for path in result)
+
+    def test_resolves_relative_scan_root(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        result = collect_exclude_dirs(Path("."), extra_exclusions=(".tools", ".local"))
+        assert all(Path(path).is_absolute() for path in result)
+        assert str(tmp_path / ".tools") in result
+        assert str(tmp_path / ".local") in result
+
     def test_returns_absolute_paths(self, tmp_path):
         with patch(
             "desloppify.base.discovery.source.get_exclusions", return_value=()
         ):
             result = collect_exclude_dirs(tmp_path)
         assert all(p.startswith(str(tmp_path)) for p in result)
+
+    def test_relative_scan_root_returns_absolute_paths(self, tmp_path, monkeypatch):
+        """Relative scan roots must still produce absolute excludes.
+
+        Bandit receives an absolute target and only matches absolute exclude
+        globs. ``temp/*`` does not match ``/repo/temp/file.py``.
+        """
+        monkeypatch.chdir(tmp_path)
+        with patch(
+            "desloppify.base.discovery.source.get_exclusions",
+            return_value=("temp",),
+        ):
+            result = collect_exclude_dirs(Path("."))
+        assert all(Path(p).is_absolute() for p in result)
+        assert str(tmp_path / "temp") in result
+        assert str(tmp_path / ".venv") in result
 
     def test_includes_default_non_glob_entries(self, tmp_path):
         with patch(
@@ -1000,6 +1083,23 @@ class TestCollectExcludeDirs:
             result = collect_exclude_dirs(tmp_path)
         # glob pattern should not appear
         assert not any("vendor" in p for p in result)
+
+    def test_returns_absolute_paths_for_relative_scan_root(self, monkeypatch, tmp_path):
+        """A relative scan root must still yield absolute exclusion paths.
+
+        Python scan roots are derived from relative source paths, so a repo
+        whose files span several top-level dirs produces ``Path(".")``. Bandit
+        is handed an absolute scan target, so relative exclusions never match
+        and excluded directories get scanned anyway.
+        """
+        monkeypatch.chdir(tmp_path)
+        with patch(
+            "desloppify.base.discovery.source.get_exclusions",
+            return_value=("vendored",),
+        ):
+            result = collect_exclude_dirs(Path("."))
+        assert all(Path(p).is_absolute() for p in result)
+        assert str((tmp_path / "vendored").resolve()) in result
 
     def test_deduplicates(self, tmp_path):
         """Runtime exclusion that overlaps with DEFAULT_EXCLUSIONS doesn't produce dupes."""

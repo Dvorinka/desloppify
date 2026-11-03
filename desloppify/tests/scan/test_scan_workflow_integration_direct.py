@@ -102,10 +102,20 @@ def test_merge_scan_results_persists_state_and_reconciles_plan(tmp_path):
 
     state = state_mod.empty_state()
     state["scan_path"] = rel(str(tmp_path))
-    state["strict_score"] = 82.5
-    state["overall_score"] = 84.0
-    state["objective_score"] = 86.0
-    state["verified_strict_score"] = 82.5
+    state_mod.save_state(state, state_path)
+    # save_state recomputes scores from issues — stamp the prior snapshot
+    # directly so the merge reads a realistic previous score.
+    import json as _json
+
+    persisted = _json.loads(state_path.read_text())
+    persisted["strict_score"] = 82.5
+    persisted["overall_score"] = 84.0
+    persisted["objective_score"] = 86.0
+    persisted["verified_strict_score"] = 82.5
+    # Mark the state as scan-sourced so load_state does not attempt plan
+    # reconstruction (the test plan file carries a queue order).
+    persisted["last_scan"] = "2026-10-31T00:00:00Z"
+    state_path.write_text(_json.dumps(persisted))
 
     runtime = ScanRuntime(
         args=SimpleNamespace(force_resolve=False),
@@ -155,6 +165,118 @@ def test_merge_scan_results_persists_state_and_reconciles_plan(tmp_path):
     assert stale_id in plan_after.get("superseded", {})
     plan_start = plan_after.get("plan_start_scores", {})
     assert isinstance(plan_start.get("strict"), float)
+
+
+def test_merge_scan_results_preserves_external_state_changes(tmp_path):
+    """A concurrent command's write between load and merge must not be lost."""
+    state_path = tmp_path / "state.json"
+
+    state = state_mod.empty_state()
+    state["scan_path"] = rel(str(tmp_path))
+    state_mod.save_state(state, state_path)
+
+    runtime = ScanRuntime(
+        args=SimpleNamespace(force_resolve=False),
+        state_path=state_path,
+        state=state_mod.load_state(state_path),
+        path=tmp_path,
+        config={"ignore": [], "needs_rescan": False},
+        lang=None,
+        lang_label="",
+        profile="full",
+        effective_include_slow=True,
+        zone_overrides=None,
+    )
+
+    # Simulate another command mutating state after this scan loaded it.
+    with state_mod.state_lock(state_path) as state:
+        state["work_items"]["external::src/x.py::1"] = {"status": "fixed"}
+
+    issues = [
+        state_mod.make_issue(
+            "structural",
+            "src/new_module.py",
+            "new_large_file",
+            tier=2,
+            confidence="high",
+            summary="Large module should be split",
+            detail={"loc": 260},
+        )
+    ]
+    merge_scan_results(
+        runtime,
+        issues,
+        potentials={"structural": 1},
+        codebase_metrics={"total_files": 1},
+    )
+
+    persisted = state_mod.load_state(state_path)
+    assert issues[0]["id"] in persisted["issues"]
+    assert persisted["work_items"]["external::src/x.py::1"]["status"] == "fixed"
+
+
+def test_merge_scan_results_serializes_concurrent_merges(tmp_path):
+    """Two concurrent merges must not clobber each other's non-scan fields."""
+    import threading
+
+    state_path = tmp_path / "state.json"
+    state = state_mod.empty_state()
+    state["scan_path"] = rel(str(tmp_path))
+    state_mod.save_state(state, state_path)
+
+    def _make_runtime() -> ScanRuntime:
+        return ScanRuntime(
+            args=SimpleNamespace(force_resolve=False),
+            state_path=state_path,
+            state=state_mod.load_state(state_path),
+            path=tmp_path,
+            config={"ignore": [], "needs_rescan": False},
+            lang=None,
+            lang_label="",
+            profile="full",
+            effective_include_slow=True,
+            zone_overrides=None,
+        )
+
+    barrier = threading.Barrier(2)
+    errors: list[BaseException] = []
+    expected_ids: list[str] = []
+
+    def _merge(name: str) -> None:
+        try:
+            barrier.wait(timeout=10)
+            issue = state_mod.make_issue(
+                "structural",
+                f"src/{name}.py",
+                f"{name}_issue",
+                tier=2,
+                confidence="high",
+                summary=f"{name} issue",
+                detail={"loc": 260},
+            )
+            expected_ids.append(issue["id"])
+            merge_scan_results(
+                _make_runtime(),
+                [issue],
+                potentials={"structural": 1},
+                codebase_metrics={"total_files": 1},
+            )
+        except BaseException as exc:  # noqa: BLE001 - surface thread failures
+            errors.append(exc)
+
+    threads = [
+        threading.Thread(target=_merge, args=(f"mod{i}",)) for i in range(2)
+    ]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=30)
+
+    assert not errors
+    persisted = state_mod.load_state(state_path)
+    ids = set(persisted["issues"])
+    for issue_id in expected_ids:
+        assert issue_id in ids
 
 
 def test_framework_runtime_cache_stays_out_of_persisted_review_cache(tmp_path: Path):

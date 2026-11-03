@@ -5,6 +5,9 @@ Go plugin originally contributed by tinker495 (PR #128).
 
 from __future__ import annotations
 
+from pathlib import Path
+from types import SimpleNamespace
+
 from desloppify.engine.policy.zones import FileZoneMap, Zone
 from desloppify.engine.hook_registry import get_lang_hook
 from desloppify.languages import get_lang
@@ -81,3 +84,39 @@ def test_map_test_to_source():
     assert hook.map_test_to_source("pkg/foo_test.go", prod) == "pkg/foo.go"
     assert hook.map_test_to_source("pkg/baz_test.go", prod) is None
     assert hook.map_test_to_source("pkg/helpers.go", prod) is None
+
+
+class TestGolangciVersionCmd:
+    """Issue #887 — golangci-lint v2 removed ``--out-format``."""
+
+    def _run_version(self, monkeypatch, stdout: str):
+        import desloppify.languages.go as go_mod
+
+        monkeypatch.setattr(
+            go_mod.subprocess,
+            "run",
+            lambda *a, **k: SimpleNamespace(stdout=stdout, returncode=0),
+        )
+        go_mod._golangci_major.cache_clear()
+
+    def test_v2_picks_output_json_path(self, monkeypatch):
+        import desloppify.languages.go as go_mod
+
+        self._run_version(monkeypatch, "golangci-lint has version 2.15.0 built with go1.25.1")
+        assert go_mod._golangci_cmd(Path("."), None) == go_mod._GOLANGCI_CMD_V2
+
+    def test_v1_keeps_out_format(self, monkeypatch):
+        import desloppify.languages.go as go_mod
+
+        self._run_version(monkeypatch, "golangci-lint has version 1.64.8 built with go1.24.0")
+        assert go_mod._golangci_cmd(Path("."), None) is None
+
+    def test_missing_binary_keeps_default(self, monkeypatch):
+        import desloppify.languages.go as go_mod
+
+        def _missing(*a, **k):
+            raise FileNotFoundError("golangci-lint")
+
+        monkeypatch.setattr(go_mod.subprocess, "run", _missing)
+        go_mod._golangci_major.cache_clear()
+        assert go_mod._golangci_cmd(Path("."), None) is None

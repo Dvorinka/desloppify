@@ -72,12 +72,6 @@ def test_unenriched_clusters_flags_missing_requirements() -> None:
                 "auto": False,
                 "issue_ids": ["review::a", "review::b"],
             },
-            "small_needs_more_steps": {
-                "auto": False,
-                "issue_ids": ["review::c", "review::d", "review::e"],
-                "description": "ok",
-                "action_steps": ["one", "two"],
-            },
             "large_has_steps": {
                 "auto": False,
                 "issue_ids": ["r1", "r2", "r3", "r4", "r5"],
@@ -92,9 +86,9 @@ def test_unenriched_clusters_flags_missing_requirements() -> None:
     assert "auto_cluster" not in gaps
     assert "empty_cluster" not in gaps
     assert gaps["needs_everything"] == ["description", "action_steps"]
-    assert gaps["small_needs_more_steps"] == [
-        "action_steps (have 2, need >= 3 for small cluster)"
-    ]
+    # Upstream #850: consolidated steps are always allowed — a small
+    # cluster with fewer steps than issues is no longer a gap.
+    assert "small_needs_more_steps" not in gaps
     assert "large_has_steps" not in gaps
 
 
@@ -175,6 +169,29 @@ def test_unclustered_review_issues_ignores_stale_frozen_triage_ids() -> None:
     assert stage_helpers_mod.unclustered_review_issues(plan, state) == ["review::open"]
 
 
+def test_empty_frozen_triage_scope_excludes_legacy_manual_clusters() -> None:
+    """Frozen-empty scope means no live review issues — a completed
+    cluster's resolved member must not expand or re-enter the scope."""
+    plan = {
+        "epic_triage_meta": {"active_triage_issue_ids": []},
+        "clusters": {
+            "legacy": {
+                "auto": False,
+                "issue_ids": ["review::legacy"],
+                "execution_status": "done",
+            },
+        },
+    }
+    state = {
+        "issues": {
+            "review::legacy": {"status": "fixed", "detector": "review"},
+        },
+    }
+
+    assert stage_helpers_mod.active_triage_issue_scope(plan, state) == set()
+    assert stage_helpers_mod.scoped_manual_clusters_with_issues(plan, state) == []
+
+
 def test_inject_triage_stages_keeps_workflow_prefix_ahead_of_triage() -> None:
     plan = {
         "queue_order": [
@@ -217,3 +234,35 @@ def test_validate_stage_report_length_requires_longer_report_for_larger_issue_co
     out = capsys.readouterr().out
     assert "minimum 100" in out
     assert "Add concrete evidence." in out
+
+
+def test_unenriched_clusters_accepts_consolidated_steps() -> None:
+    """#888/#850: consolidated steps satisfy small clusters — step count
+    is no longer gated; refs/detail are validated at enrich."""
+    plan = {
+        "clusters": {
+            "consolidated_covered": {
+                "auto": False,
+                "issue_ids": ["review::a", "review::b", "review::c"],
+                "description": "ok",
+                "action_steps": [
+                    {"title": "merge stale tests", "issue_refs": ["review::a", "review::b"]},
+                    {"title": "verify suite", "issue_refs": ["review::c"]},
+                ],
+            },
+            "consolidated_partial": {
+                "auto": False,
+                "issue_ids": ["review::d", "review::e", "review::f"],
+                "description": "ok",
+                "action_steps": [
+                    {"title": "fix some", "issue_refs": ["review::d"]},
+                    {"title": "fix rest", "issue_refs": ["review::e"]},
+                ],
+            },
+        }
+    }
+
+    gaps = dict(stage_helpers_mod.unenriched_clusters(plan))
+
+    assert "consolidated_covered" not in gaps
+    assert "consolidated_partial" not in gaps

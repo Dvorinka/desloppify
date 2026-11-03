@@ -326,6 +326,18 @@ def print_review_import_scores_and_integrity(
     colorize_fn,
 ) -> list[dict[str, Any]]:
     """Print subjective integrity warnings (score line handled by print_score_update)."""
+    # The scorer's integrity policy is authoritative. When it reports the
+    # target-match safeguard as disabled, no reset can happen — warning about
+    # one instructs redundant review reruns (upstream #923).
+    raw_integrity = state.get("subjective_integrity")
+    integrity_status = (
+        str(raw_integrity.get("status", "")).strip().lower()
+        if isinstance(raw_integrity, dict)
+        else ""
+    )
+    if integrity_status == "disabled":
+        return []
+
     target_strict = target_strict_score_from_config_fn(config)
     at_target = subjective_at_target_fn(
         state,

@@ -7,7 +7,6 @@ import re
 from .helpers import (
     _code_text,
     _strip_ts_comments,
-    _track_brace_body,
 )
 
 _MONSTER_FUNCTION_LOC = 150
@@ -19,7 +18,12 @@ _SWITCH_CASE_MINIMUM = 2
 _MAX_CATCH_BODY = 1000
 _MAX_SWITCH_BODY_SCAN = 5000
 
-_ERROR_HANDLER_BASENAMES = ("logger", "errorpresentation", "errorhandler", "errorreporting")
+_ERROR_HANDLER_BASENAMES = (
+    "logger",
+    "errorpresentation",
+    "errorhandler",
+    "errorreporting",
+)
 _PRECEDING_SKIP_PATTERNS = re.compile(
     r"componentDidCatch|import\.meta\.env\.DEV|process\.env\.NODE_ENV"
 )
@@ -84,7 +88,9 @@ def _find_function_start(line: str, next_lines: list[str]) -> str | None:
     if not assignment_match:
         return None
 
-    combined = "\n".join([stripped] + [next_line.strip() for next_line in next_lines[:2]])
+    combined = "\n".join(
+        [stripped] + [next_line.strip() for next_line in next_lines[:2]]
+    )
     eq_pos = combined.find("=", assignment_match.end())
     if eq_pos == -1:
         return None
@@ -96,7 +102,9 @@ def _find_function_start(line: str, next_lines: list[str]) -> str | None:
     return None
 
 
-def _find_opening_brace_line(lines: list[str], start: int, *, window: int = 5) -> int | None:
+def _find_opening_brace_line(
+    lines: list[str], start: int, *, window: int = 5
+) -> int | None:
     for idx in range(start, min(start + window, len(lines))):
         if "{" in lines[idx]:
             return idx
@@ -104,21 +112,68 @@ def _find_opening_brace_line(lines: list[str], start: int, *, window: int = 5) -
 
 
 def _extract_function_body(
-    lines: list[str], start_line: int, *, max_scan: int = 2000,
+    lines: list[str],
+    start_line: int,
+    *,
+    max_scan: int = 2000,
 ) -> str | None:
     """Extract the inner body text of a function starting at start_line."""
-    brace_line = _find_opening_brace_line(lines, start_line, window=5)
-    if brace_line is None:
+    segment = "\n".join(lines[start_line : min(start_line + max_scan, len(lines))])
+    code = _code_text(segment)
+    paren_depth = 0
+    bracket_depth = 0
+    signature_brace_depth = 0
+    parameter_list_started = False
+    parameters_closed = False
+    previous_code_character = ""
+    body_start: int | None = None
+
+    for index, character in enumerate(code):
+        if character == "(":
+            parameter_list_started = True
+            paren_depth += 1
+        elif character == ")" and paren_depth > 0:
+            paren_depth -= 1
+            if parameter_list_started and paren_depth == 0:
+                parameters_closed = True
+        elif character == "[":
+            bracket_depth += 1
+        elif character == "]" and bracket_depth > 0:
+            bracket_depth -= 1
+        elif character == "{" and paren_depth == 0 and bracket_depth == 0:
+            if not parameters_closed:
+                # Generic constraints can contain object types before the parameter list.
+                # They cannot be executable bodies for the function shapes detected here.
+                pass
+            elif signature_brace_depth > 0:
+                signature_brace_depth += 1
+            elif previous_code_character in ":<|&,(=[":
+                # Object-shaped parameter/return types are part of the signature, not
+                # the executable function body. Keep scanning after their matching brace.
+                signature_brace_depth = 1
+            else:
+                body_start = index
+                break
+        elif character == "}" and signature_brace_depth > 0:
+            signature_brace_depth -= 1
+
+        if not character.isspace():
+            previous_code_character = character
+
+    if body_start is None:
         return None
-    end_line = _track_brace_body(lines, brace_line, max_scan=max_scan)
-    if end_line is None:
-        return None
-    body_text = "\n".join(lines[brace_line : end_line + 1])
-    first_brace = body_text.find("{")
-    last_brace = body_text.rfind("}")
-    if first_brace == -1 or last_brace == -1 or first_brace >= last_brace:
-        return None
-    return body_text[first_brace + 1 : last_brace]
+
+    depth = 0
+    for index in range(body_start, len(code)):
+        character = code[index]
+        if character == "{":
+            depth += 1
+        elif character == "}":
+            depth -= 1
+            if depth == 0:
+                return segment[body_start + 1 : index]
+
+    return None
 
 
 def _count_pattern_in_body(body: str, pattern: re.Pattern[str]) -> int:
@@ -126,9 +181,82 @@ def _count_pattern_in_body(body: str, pattern: re.Pattern[str]) -> int:
     return len(pattern.findall(_code_text(body)))
 
 
+def _matching_brace(code: str, open_index: int) -> int | None:
+    """Closing-brace index for the '{' at open_index, on string-blanked code."""
+    depth = 0
+    for index in range(open_index, len(code)):
+        character = code[index]
+        if character == "{":
+            depth += 1
+        elif character == "}":
+            depth -= 1
+            if depth == 0:
+                return index
+    return None
+
+
+def _first_body_brace(code: str, start: int) -> int | None:
+    """Function-body '{' after a ``function`` keyword; None when not a head."""
+    paren_depth = 0
+    bracket_depth = 0
+    for index in range(start, len(code)):
+        character = code[index]
+        if character == "(":
+            paren_depth += 1
+        elif character == ")" and paren_depth > 0:
+            paren_depth -= 1
+        elif character == "[":
+            if paren_depth == 0:
+                return None
+            bracket_depth += 1
+        elif character == "]" and bracket_depth > 0:
+            bracket_depth -= 1
+        elif character == "{":
+            if paren_depth == 0:
+                return None
+        elif character in "=;" and paren_depth == 0:
+            return None
+    return None
+
+
+def _arrow_body_open(code: str, start: int) -> int | None:
+    """Opening-brace index when an arrow is block-bodied, else None."""
+    index = start
+    while index < len(code) and code[index].isspace():
+        index += 1
+    if index < len(code) and code[index] == "{":
+        return index
+    return None
+
+
+def _strip_nested_function_bodies(stripped: str) -> str:
+    """Blank nested function bodies so branch counts stay locally owned."""
+    code = _code_text(stripped)
+    spans = []
+    for match in re.finditer(r"\bfunction\b|=>", code):
+        if match.group() == "=>":
+            body_open = _arrow_body_open(code, match.end())
+        else:
+            body_open = _first_body_brace(code, match.end())
+        if body_open is None:
+            continue
+        body_close = _matching_brace(code, body_open)
+        if body_close is None:
+            continue
+        spans.append((body_open, body_close))
+    if not spans:
+        return stripped
+    out = list(code)
+    for body_open, body_close in sorted(spans, reverse=True):
+        for index in range(body_open + 1, body_close):
+            if out[index] != "\n":
+                out[index] = " "
+    return "".join(out)
+
+
 def _compute_ts_cyclomatic_complexity(body: str) -> int:
     """Compute cyclomatic complexity for a TypeScript function body string."""
-    stripped = _strip_ts_comments(body)
+    stripped = _strip_nested_function_bodies(_strip_ts_comments(body))
     complexity = 1
     for pattern in _TS_BRANCH_PATTERNS:
         complexity += len(pattern.findall(stripped))

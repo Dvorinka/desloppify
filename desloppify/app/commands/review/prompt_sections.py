@@ -192,8 +192,8 @@ def render_historical_focus(batch: PromptBatchPayload) -> str:
 
     lines.append("")
     lines.append("Explore past review issues:")
-    lines.append("  desloppify show review --no-budget              # all open review issues")
-    lines.append("  desloppify show review --status deferred         # deferred issues")
+    lines.append("  desloppify show review --no-budget --blind      # all open review issues")
+    lines.append("  desloppify show review --status deferred --blind # deferred issues")
 
     return "\n".join(lines) + "\n\n"
 
@@ -310,7 +310,7 @@ def render_mechanical_concern_signals(batch: PromptBatchPayload) -> str:
 
     extra = max(0, len(valid_signals) - len(capped_signals))
     if extra:
-        lines.append(f"  (+{extra} more — use `desloppify show <detector> --no-budget` to explore)")
+        lines.append(f"  (+{extra} more — use `desloppify show <detector> --no-budget --blind` to explore)")
     return "\n".join(lines) + "\n\n"
 
 
@@ -345,7 +345,7 @@ def render_findings_exploration_section(batch: PromptBatchPayload) -> str:
         "",
     ]
     for detector, n in sorted(all_counts.items()):
-        lines.append(f"  desloppify show {detector} --no-budget      # {n} findings")
+        lines.append(f"  desloppify show {detector} --no-budget --blind  # {n} findings")
     lines.append("")
     lines.append(
         "Report actionable issues in issues[]. Use concern_verdict and concern_fingerprint"
@@ -457,7 +457,12 @@ def render_dimension_prompts_block(
     """Render inline dimension guidance so the reviewer sees the full rubric."""
     if not dimensions or not dimension_prompts:
         return ""
-    lines: list[str] = ["DIMENSION TO EVALUATE:\n"]
+    header = (
+        "DIMENSION TO EVALUATE:\n"
+        if len(dimensions) == 1
+        else "DIMENSIONS TO EVALUATE:\n"
+    )
+    lines: list[str] = [header]
     for dim in dimensions:
         prompt = dimension_prompts.get(dim)
         if not isinstance(prompt, dict):
@@ -540,9 +545,14 @@ def render_dimension_context_block(
     return header_block + "\n\n".join(sections) + footer
 
 
-def render_scoring_frame() -> str:
+def render_scoring_frame(dimensions: tuple[str, ...] = ()) -> str:
+    scope = (
+        "this batch's dimension"
+        if len(dimensions) <= 1
+        else "each of this batch's dimensions"
+    )
     return (
-        "YOUR TASK: Read the code for this batch's dimension. Judge "
+        f"YOUR TASK: Read the code for {scope}. Judge "
         "how well the codebase serves a developer from that perspective. The dimension "
         "rubric above defines what good looks like. "
         "Cite specific observations that explain your judgment.\n\n"
@@ -574,7 +584,12 @@ def render_task_requirements(*, issues_cap: int, dim_set: set[str]) -> str:
         "9. Output a Phase 1 summary: list ALL characteristics for this dimension (existing + new, mark [+] for positive) and all defects collected. This is your consolidated reference for Phase 2.",
         "",
         "Phase 2 — Judge (after Phase 1 is complete):",
-        "10. Keep issues and scoring scoped to this batch's dimension.",
+        (
+            "10. Keep issues and scoring scoped to this batch's dimension."
+            if len(dim_set) <= 1
+            else "10. Keep each issue and each assessment scoped to its own dimension "
+            "within this batch."
+        ),
         f"11. Return 0-{issues_cap} issues for this batch (empty array allowed).",
     ]
     next_num = 12

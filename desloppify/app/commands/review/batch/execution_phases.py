@@ -15,7 +15,6 @@ from ..batches_runtime import (
     make_run_log_writer,
     resolve_run_log_path,
 )
-from ..prompt_sections import explode_to_single_dimension
 from ..runner_parallel import BatchExecutionOptions
 from ..runtime.policy import resolve_batch_run_policy
 from .execution_dry_run import maybe_handle_dry_run
@@ -33,6 +32,7 @@ from .execution_results import (
     merge_and_write_results,
 )
 from .execution_summary import build_run_summary_writer
+from .grouping import batch_mode_for_args, select_batches_for_run
 from .execution import (
     CollectBatchResultsRequest,
     LoadOrPreparePacketRequest,
@@ -112,6 +112,7 @@ class PreparedPacketScope:
     scan_path: str
     packet_dimensions: list[str]
     scored_dimensions: list[str]
+    batch_mode: str
     batches: list[dict[str, Any]]
     selected_indexes: list[int]
 
@@ -168,12 +169,14 @@ def _prepare_packet_scope(
     )
     suggested_prepare_cmd = f"desloppify review --prepare --path {scan_path}"
     raw_dim_prompts = packet.get("dimension_prompts")
-    batches = explode_to_single_dimension(
+    batch_mode = batch_mode_for_args(args)
+    batches = select_batches_for_run(
         require_batches(
             packet,
             colorize_fn=deps.colorize_fn,
             suggested_prepare_cmd=suggested_prepare_cmd,
         ),
+        mode=batch_mode,
         dimension_prompts=raw_dim_prompts if isinstance(raw_dim_prompts, dict) else None,
     )
     selected_indexes = deps.selected_batch_indexes_fn(args, batch_count=len(batches))
@@ -184,6 +187,7 @@ def _prepare_packet_scope(
         scan_path=scan_path,
         packet_dimensions=packet_dimensions,
         scored_dimensions=scored_dimensions,
+        batch_mode=batch_mode,
         batches=batches,
         selected_indexes=selected_indexes,
     )
@@ -232,6 +236,7 @@ def _prepare_run_runtime(
     batch_retry_backoff_seconds: float,
     stall_warning_seconds: float,
     stall_kill_seconds: float,
+    batch_mode: str,
 ) -> PreparedRunArtifacts:
     run_dir, logs_dir, prompt_files, output_files, log_files = deps.prepare_run_artifacts_fn(
         PrepareRunArtifactsRequest(
@@ -315,6 +320,7 @@ def _prepare_run_runtime(
             run_dir=run_dir,
             logs_dir=logs_dir,
             run_log_path=run_log_path,
+            batch_mode=batch_mode,
         ),
         batch_status=batch_status,
         safe_write_text_fn=deps.safe_write_text_fn,
@@ -391,6 +397,7 @@ def prepare_batch_run(
         batch_retry_backoff_seconds=policy.batch_retry_backoff_seconds,
         stall_warning_seconds=policy.stall_warning_seconds,
         stall_kill_seconds=policy.stall_kill_seconds,
+        batch_mode=packet_scope.batch_mode,
     )
     if maybe_handle_dry_run(
         args=args,

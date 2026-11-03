@@ -17,8 +17,8 @@ from desloppify.app.commands.helpers.runtime_options import (
 )
 from desloppify.cli import (
     _get_detector_names,
-    _running_installed_package_from_checkout,
     _resolve_default_path,
+    _running_installed_package_from_checkout,
     _warn_if_running_installed_package_from_checkout,
     create_parser,
     state_path,
@@ -727,8 +727,13 @@ class TestResolveDefaultPath:
 
         assert args.path == str(project_root.resolve())
 
-    def test_review_falls_back_to_lang_default_when_no_scan_path(self, monkeypatch):
+    def test_review_falls_back_to_lang_default_when_no_scan_path(
+        self, monkeypatch, tmp_path
+    ):
         """When state has no scan_path, review falls back to lang.default_src."""
+        project_root = tmp_path / "proj"
+        (project_root / "src").mkdir(parents=True)
+        monkeypatch.setattr(cli_mod, "get_project_root", lambda: project_root)
         with (
             patch("desloppify.cli.state_path", return_value=None),
             patch("desloppify.cli.load_state", return_value={}),
@@ -740,8 +745,29 @@ class TestResolveDefaultPath:
 
         assert args.path.endswith("src")
 
-    def test_review_falls_back_when_state_load_raises(self, monkeypatch):
+    def test_review_falls_back_to_root_when_default_src_missing(
+        self, monkeypatch, tmp_path
+    ):
+        """Missing src/ falls back to the project root (monorepo layouts)."""
+        project_root = tmp_path / "proj"
+        project_root.mkdir()
+        monkeypatch.setattr(cli_mod, "get_project_root", lambda: project_root)
+        with (
+            patch("desloppify.cli.state_path", return_value=None),
+            patch("desloppify.cli.load_state", return_value={}),
+            patch("desloppify.cli.resolve_lang") as mock_lang,
+        ):
+            mock_lang.return_value = SimpleNamespace(default_src="src")
+            args = SimpleNamespace(command="review", path=None)
+            _resolve_default_path(args)
+
+        assert args.path == str(project_root.resolve())
+
+    def test_review_falls_back_when_state_load_raises(self, monkeypatch, tmp_path):
         """If state cannot be loaded, path resolution continues without crashing."""
+        project_root = tmp_path / "proj"
+        (project_root / "src").mkdir(parents=True)
+        monkeypatch.setattr(cli_mod, "get_project_root", lambda: project_root)
         with (
             patch("desloppify.cli.state_path", return_value=None),
             patch("desloppify.cli.load_state", side_effect=OSError("no file")),
@@ -753,7 +779,10 @@ class TestResolveDefaultPath:
 
         assert args.path.endswith("src")
 
-    def test_non_review_command_uses_lang_default(self):
+    def test_non_review_command_uses_lang_default(self, monkeypatch, tmp_path):
+        project_root = tmp_path / "proj"
+        (project_root / "src").mkdir(parents=True)
+        monkeypatch.setattr(cli_mod, "get_project_root", lambda: project_root)
         with patch("desloppify.cli.resolve_lang") as mock_lang:
             mock_lang.return_value = SimpleNamespace(default_src="src")
             args = SimpleNamespace(command="scan", path=None)
@@ -946,6 +975,12 @@ class TestResolveLang:
 
 class TestProjectRootFromStatePath:
     """Infer project root from an explicit --state path."""
+
+    def test_nested_language_state_file(self, tmp_path: Path):
+        from desloppify.cli import _project_root_from_state_path
+
+        state_file = tmp_path / ".desloppify" / "rust" / "state-rust.json"
+        assert _project_root_from_state_path(state_file) == tmp_path
 
     def test_language_state_file(self, tmp_path: Path):
         dot = tmp_path / ".desloppify"

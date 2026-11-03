@@ -26,7 +26,7 @@ CXX_FILE_EXCLUSIONS = [
 _FUNC_DECL_RE = re.compile(
     r"(?:(?:^)|(?<=[;}\n]))\s*"
     r"(?:(?:inline|static|constexpr|virtual|explicit|friend|extern|typename)\s+)*"
-    r"(?:[A-Za-z_~]\w*(?:::[A-Za-z_~]\w*)*(?:<[^;{}()]+>)?[\s*&:]+)+"
+    r"(?>(?:[A-Za-z_~]\w*(?:::[A-Za-z_~]\w*)*(?:<[^;{}()]+>)?[\s*&]+)+)"
     r"([A-Za-z_~]\w*(?:::[A-Za-z_~]\w*)*)\s*"
     r"\(([^()]*)\)\s*"
     r"(?:const\s*)?"
@@ -37,6 +37,20 @@ _FUNC_DECL_RE = re.compile(
 )
 _COMMENT_BLOCK_RE = re.compile(r"/\*.*?\*/", re.DOTALL)
 _COMMENT_LINE_RE = re.compile(r"//.*?$", re.MULTILINE)
+
+# The decl regex can read `else if (cond) {` as `else` + named fn `if`
+# (#903). Language keywords are never function names.
+_CXX_NOT_FUNCTION_NAMES = frozenset({
+    "if", "else", "for", "while", "do", "switch", "case", "default",
+    "return", "sizeof", "decltype", "alignof", "static_assert", "catch",
+    "try", "throw", "new", "delete", "and", "or", "not", "sizeof",
+    "co_await", "co_yield", "co_return", "requires", "concept",
+})
+
+_CXX_QUALIFIER_WORDS = frozenset({
+    "const", "volatile", "constexpr", "consteval", "constinit", "static",
+    "mutable", "register", "inline", "typename", "class", "struct", "enum",
+})
 
 
 def find_cxx_files(path: Path | str) -> list[str]:
@@ -68,17 +82,28 @@ def _split_params(param_str: str) -> list[str]:
 
 
 def _extract_params(param_str: str) -> list[str]:
+    """Return canonical parameter *types* for signature comparison.
+
+    `Reason Reason`, `const Reason Reason` and an unnamed `Reason` are the
+    same callable type (#903): the last identifier is the argument name
+    when more than one token remains, and cv/ref/ptr qualifiers do not
+    change the by-value signature.
+    """
     params: list[str] = []
     for raw in _split_params(param_str):
         token = raw.strip().split("=")[0].strip()
-        if not token:
+        if not token or token == "void":
             continue
-        parts = [part for part in token.replace("&", " ").replace("*", " ").split() if part]
+        token = token.replace("&&", " ").replace("&", " ").replace("*", " ")
+        parts = [part for part in token.split() if part]
+        parts = [part for part in parts if part not in _CXX_QUALIFIER_WORDS]
         if not parts:
             continue
-        name = parts[-1]
-        if re.fullmatch(r"[A-Za-z_]\w*", name):
-            params.append(name)
+        if len(parts) > 1 and re.fullmatch(r"[A-Za-z_]\w*", parts[-1]):
+            parts = parts[:-1]
+        param_type = " ".join(parts).replace(" ::", "::").replace(":: ", "::")
+        if param_type:
+            params.append(param_type)
     return params
 
 
@@ -100,7 +125,13 @@ def extract_cxx_functions(filepath: str) -> list[FunctionInfo]:
 
     functions: list[FunctionInfo] = []
     for match in _FUNC_DECL_RE.finditer(content):
-        name = match.group(1).split("::")[-1]
+        qualified = match.group(1)
+        leaf = qualified.split("::")[-1]
+        if leaf in _CXX_NOT_FUNCTION_NAMES:
+            continue
+        # Keep the owner qualifier: A::EndPlay and B::EndPlay are distinct
+        # member contracts (#903); bare names stay bare.
+        name = qualified
         start = match.start()
         start_line = content.count("\n", 0, start) + 1
         open_pos = match.end() - 1

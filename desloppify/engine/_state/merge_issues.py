@@ -7,15 +7,15 @@ from collections.abc import Mapping
 from typing import Any
 
 from desloppify.base.discovery.file_paths import matches_exclusion
-from desloppify.engine.policy.zones import should_skip_issue
 from desloppify.engine._state.filtering import (
     issue_suppression_fingerprint,
     matched_ignore_pattern,
 )
 from desloppify.engine._state.issue_semantics import (
-    is_import_only_issue,
     is_assessment_request,
+    is_import_only_issue,
 )
+from desloppify.engine.policy.zones import should_skip_issue
 
 
 def find_suspect_detectors(
@@ -24,7 +24,7 @@ def find_suspect_detectors(
     force_resolve: bool,
     ran_detectors: set[str] | None = None,
 ) -> set[str]:
-    """Detectors that had open issues but likely did not actually run this scan."""
+    """Detectors without evidence of running in the current merge."""
     if force_resolve:
         return set()
 
@@ -43,14 +43,20 @@ def find_suspect_detectors(
         if isinstance(issue, dict) and is_import_only_issue(issue)
     }
 
+    if ran_detectors is not None:
+        existing_detectors = {issue.get("detector", "unknown") for issue in existing.values()}
+        reported_detectors = {
+            detector for detector, count in current_by_detector.items() if count > 0
+        }
+        # Explicit detector inventory also protects manually resolved groups
+        # with no open rows, as occurs during review-only imports.
+        suspect.update(existing_detectors - ran_detectors - reported_detectors)
+        return suspect
+
     for detector, previous_count in previous_open_by_detector.items():
         if detector in suspect:
             continue
         if current_by_detector.get(detector, 0) > 0:
-            continue
-        if ran_detectors is not None:
-            if detector not in ran_detectors:
-                suspect.add(detector)
             continue
         if previous_count >= 3:
             suspect.add(detector)
@@ -64,19 +70,127 @@ def _mark_scan_verified(
     *,
     note: str,
     attestation_text: str,
-) -> None:
-    """Record scan corroboration without changing the manual disposition."""
-    issue["suppressed"] = False
-    issue["suppressed_at"] = None
-    issue["suppression_pattern"] = None
-    issue["note"] = note
+) -> bool:
+    """Refresh corroboration and return whether it adds new absence evidence."""
     existing = issue.get("resolution_attestation")
     if not isinstance(existing, dict):
         existing = {}
         issue["resolution_attestation"] = existing
+    last_seen = str(issue.get("last_seen") or "")
+    verified_at = str(existing.get("scan_verified_at") or "")
+    # Rechecking the same absence only refreshes recency. A later sighting
+    # (possible for wontfix issues) or a changed verification scope is new.
+    new_evidence = (
+        not existing.get("scan_verified")
+        or existing.get("scan_verification_text") != attestation_text
+        or bool(last_seen and (not verified_at or last_seen > verified_at))
+    )
+    issue["suppressed"] = False
+    issue["suppressed_at"] = None
+    issue["suppression_pattern"] = None
+    issue["note"] = note
     existing["scan_verified"] = True
     existing["scan_verified_at"] = now
     existing["scan_verification_text"] = attestation_text
+    return new_evidence
+
+
+# The note each verified auto-resolution has always written, mapped to the kind
+# the scorer reads. State written before `resolution_kind` existed still gets
+# the exemption, so the fix applies to a repository's history and not only to
+# what it deletes next.
+_RESOLUTION_KIND_BY_NOTE = (
+    ("source file no longer exists", "file_deleted"),
+    ("zone policy now skips", "zone_policy"),
+)
+
+
+def _backfill_resolution_kinds(existing: dict) -> None:
+    """Stamp `resolution_kind` on auto-resolutions recorded before the field."""
+    for previous in existing.values():
+        if previous.get("status") != "auto_resolved":
+            continue
+        if previous.get("resolution_kind") is not None:
+            continue
+        note = previous.get("note") or ""
+        for fragment, kind in _RESOLUTION_KIND_BY_NOTE:
+            if fragment in note:
+                previous["resolution_kind"] = kind
+                break
+
+
+def apply_semantic_corrections(
+    existing: dict,
+    current_ids: set[str],
+    corrections: Mapping[str, Mapping[str, str]] | None,
+    now: str,
+    *,
+    lang: str | None,
+    scan_path: str | None,
+    confirmed_detectors: set[str],
+    suspect_detectors: set[str],
+) -> set[str]:
+    """Apply detector-proven false-positive corrections from a full scan.
+
+    Corrections are scanner-owned evidence, not a generic replacement for a
+    user disposition: the item must still be open, absent from the current
+    detector output, and produced by a confirmed non-suspect detector.
+    """
+
+    if scan_path != "." or not corrections:
+        return set()
+
+    corrected_issue_ids: set[str] = set()
+    for issue_id, correction in corrections.items():
+        previous = existing.get(issue_id)
+        if not isinstance(previous, dict) or issue_id in current_ids:
+            continue
+        if previous.get("status") != "open" or previous.get("suppressed"):
+            continue
+        detector = str(correction.get("detector", ""))
+        correction_kind = str(correction.get("kind", "")).strip()
+        correction_file = str(correction.get("file", "")).strip()
+        correction_key = str(correction.get("key", "")).strip()
+        correction_line = str(correction.get("line", "")).strip()
+        detail = previous.get("detail")
+        if (
+            not detector
+            or not correction_kind
+            or not correction_file
+            or not correction_key
+            or not correction_line
+            or previous.get("detector") != detector
+            or previous.get("file") != correction_file
+            or detector not in confirmed_detectors
+            or detector in suspect_detectors
+            or not isinstance(detail, dict)
+            or detail.get("kind") != correction_kind
+            or str(detail.get("key", "")) != correction_key
+            or str(detail.get("line", "")) != correction_line
+        ):
+            continue
+        if lang and previous.get("lang") not in (None, lang):
+            continue
+        rule = str(correction.get("rule", "")).strip()
+        evidence = str(correction.get("evidence", "")).strip()
+        if not rule or not evidence:
+            continue
+
+        previous.update(
+            status="false_positive",
+            resolved_at=now,
+            note=f"Detector semantic correction ({rule}): {evidence}",
+            resolution_attestation={
+                "kind": "detector_semantic_correction",
+                "rule": rule,
+                "scan_verified": True,
+                "scan_verified_at": now,
+                "scan_verification_text": evidence,
+            },
+        )
+        corrected_issue_ids.add(issue_id)
+
+    return corrected_issue_ids
 
 
 def verify_disappeared(
@@ -91,18 +205,24 @@ def verify_disappeared(
     project_root: str | None = None,
     zone_map=None,
     confirmed_detectors: set[str] | None = None,
+    semantic_correction_ids: set[str] | None = None,
 ) -> tuple[int, int, int, set[str]]:
     """Update scan corroboration for issues absent from scan.
 
     Returns (resolved_count, skipped_other_lang, resolved_out_of_scope, changed_detectors).
     Queue-tracked work stays user-controlled unless the detector is known to
     have run in the current scan or the source file no longer exists. Manually
-    resolved items can be marked as scan-verified when they remain absent.
+    resolved items can be marked as scan-verified when they remain absent
+    from a detector confirmed to have run in this scan.
     """
     resolved = skipped_other_lang = resolved_out_of_scope = 0
     resolved_detectors: set[str] = set()
 
+    _backfill_resolution_kinds(existing)
+
     for issue_id, previous in existing.items():
+        if semantic_correction_ids and issue_id in semantic_correction_ids:
+            continue
         previous_status = previous.get("status")
         if issue_id in current_ids or previous_status not in (
             "open",
@@ -123,6 +243,16 @@ def verify_disappeared(
         if previous.get("detector", "unknown") in suspect_detectors:
             continue
 
+        # Review imports and partial scans do not corroborate dispositions for
+        # detectors that did not run. Suspect detection alone is insufficient:
+        # it counts open issues, and a detector may have only resolved issues.
+        # Apply this before scope verification, which also records scan evidence.
+        if previous_status != "open" and (
+            confirmed_detectors is None
+            or previous.get("detector", "unknown") not in confirmed_detectors
+        ):
+            continue
+
         if scan_path and scan_path != ".":
             prefix = scan_path.rstrip("/") + "/"
             if (
@@ -131,14 +261,14 @@ def verify_disappeared(
             ):
                 if previous_status != "open":
                     scope_note = f"Still absent in current scan scope ({scan_path})"
-                    _mark_scan_verified(
+                    if _mark_scan_verified(
                         previous,
                         now,
                         note=scope_note,
                         attestation_text=scope_note,
-                    )
-                    resolved_detectors.add(previous.get("detector", "unknown"))
-                    resolved_out_of_scope += 1
+                    ):
+                        resolved_detectors.add(previous.get("detector", "unknown"))
+                        resolved_out_of_scope += 1
                 continue
 
         if exclude and any(matches_exclusion(previous["file"], ex) for ex in exclude):
@@ -160,6 +290,7 @@ def verify_disappeared(
             if zone_map and file_path and should_skip_issue(zone_map, file_path, detector):
                 previous["status"] = "auto_resolved"
                 previous["resolved_at"] = now
+                previous["resolution_kind"] = "zone_policy"
                 previous["note"] = f"Auto-resolved: zone policy now skips {detector} for this file"
                 resolved_detectors.add(detector or "unknown")
                 resolved += 1
@@ -167,6 +298,7 @@ def verify_disappeared(
             if file_deleted:
                 previous["status"] = "auto_resolved"
                 previous["resolved_at"] = now
+                previous["resolution_kind"] = "file_deleted"
                 previous["note"] = "Auto-resolved: source file no longer exists"
                 resolved_detectors.add(previous.get("detector", "unknown"))
                 resolved += 1
@@ -174,6 +306,7 @@ def verify_disappeared(
             if detector and confirmed_detectors is not None and detector in confirmed_detectors:
                 previous["status"] = "auto_resolved"
                 previous["resolved_at"] = now
+                previous["resolution_kind"] = None
                 previous["note"] = "Auto-resolved: absent from latest detector output"
                 resolved_detectors.add(detector)
                 resolved += 1
@@ -185,14 +318,14 @@ def verify_disappeared(
             if previous_status == "wontfix"
             else "Still absent from scan after manual resolution"
         )
-        _mark_scan_verified(
+        if _mark_scan_verified(
             previous,
             now,
             note=verification_note,
             attestation_text="Absent from detector output in latest scan",
-        )
-        resolved_detectors.add(previous.get("detector", "unknown"))
-        resolved += 1
+        ):
+            resolved_detectors.add(previous.get("detector", "unknown"))
+            resolved += 1
 
     return resolved, skipped_other_lang, resolved_out_of_scope, resolved_detectors
 
@@ -205,6 +338,7 @@ def upsert_issues(
     *,
     lang: str | None,
     ignore_metadata: Mapping[str, Any] | None = None,
+    canonical_false_positive_ids: frozenset[str] = frozenset(),
 ) -> tuple[set[str], int, int, dict[str, int], int, set[str]]:
     """Insert new issues and update existing ones.
 
@@ -261,6 +395,16 @@ def upsert_issues(
         if lang and not previous.get("lang"):
             previous["lang"] = lang
 
+        attestation = previous.get("resolution_attestation")
+        if (
+            previous["status"] == "wontfix"
+            and isinstance(attestation, dict)
+            and attestation.get("scan_verified")
+        ):
+            attestation["scan_verified"] = False
+            attestation.pop("scan_verified_at", None)
+            attestation.pop("scan_verification_text", None)
+
         if matched_ignore:
             previous["suppressed"] = True
             previous["suppressed_at"] = now
@@ -270,6 +414,13 @@ def upsert_issues(
         previous["suppressed"] = False
         previous["suppressed_at"] = None
         previous["suppression_pattern"] = None
+
+        # A reappearing accepted finding ends its corroborated absence even
+        # when both scans share the same timestamp second.
+        if previous["status"] == "wontfix":
+            attestation = previous.get("resolution_attestation")
+            if isinstance(attestation, dict):
+                attestation["scan_verified"] = False
 
         if previous["status"] in ("fixed", "auto_resolved", "false_positive"):
             # Review-request issues are condition-based. When just
@@ -293,7 +444,13 @@ def upsert_issues(
                 ),
             )
             reopened_count += 1
-            changed_detectors.add(detector)
+            # Keep raw reopen semantics, while excluding only a same-ID
+            # false positive that canonical plan policy will restore.
+            if (
+                previous_status != "false_positive"
+                or issue_id not in canonical_false_positive_ids
+            ):
+                changed_detectors.add(detector)
 
     return current_ids, new_count, reopened_count, by_detector, ignored_count, changed_detectors
 
@@ -325,6 +482,7 @@ def _suppression_metadata_from_state(
 
 
 __all__ = [
+    "apply_semantic_corrections",
     "verify_disappeared",
     "find_suspect_detectors",
     "upsert_issues",

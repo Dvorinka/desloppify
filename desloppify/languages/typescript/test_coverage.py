@@ -7,9 +7,16 @@ import os
 import re
 from pathlib import Path
 
-from desloppify.base.output.fallbacks import log_best_effort_failure
 from desloppify.base.discovery.paths import get_project_root, get_src_path
+from desloppify.base.output.fallbacks import log_best_effort_failure
 from desloppify.base.text_utils import strip_c_style_comments
+from desloppify.languages.typescript.detectors.deps.resolve import (
+    find_tsconfig_root,
+    iter_resolve_candidates,
+    load_tsconfig_paths,
+    resolve_alias,
+    resolve_package_specifier,
+)
 
 TS_IMPORT_RE = re.compile(
     r"""(?:\bfrom\s+|\bimport\s*\(\s*|\bimport\s+)(?:type\s+)?['\"]([^'\"]+)['\"]""",
@@ -23,6 +30,7 @@ ASSERT_PATTERNS = [
     re.compile(p)
     for p in [
         r"expect\(",
+        r"\bexpectTypeOf(?:\s*<[^;()]+>)?\s*\(",
         r"assert\.",
         r"\bassert(?:[A-Z]\w*)?\(",
         r"\.should\.",
@@ -66,14 +74,15 @@ EXPECT_COMPARISON_RE = re.compile(
 EXPECT_TO_BE_DEFINED_RE = re.compile(r"""\.toBeDefined\s*\(""")
 
 BARREL_BASENAMES = {"index.ts", "index.tsx"}
-_TS_EXTENSIONS = ["", ".ts", ".tsx", "/index.ts", "/index.tsx"]
 logger = logging.getLogger(__name__)
 
 
 def _relative_if_under_root(path_str: str) -> str:
     """Return project-relative path when possible; else return original."""
     try:
-        return str(Path(path_str).resolve().relative_to(get_project_root())).replace("\\", "/")
+        return str(Path(path_str).resolve().relative_to(get_project_root())).replace(
+            "\\", "/"
+        )
     except (OSError, ValueError):
         return path_str
 
@@ -159,34 +168,54 @@ def resolve_import_spec(
     spec: str, test_path: str, production_files: set[str]
 ) -> str | None:
     """Resolve a TypeScript import specifier to a production file path."""
-    if spec.startswith("@/") or spec.startswith("~/"):
-        base = get_src_path() / spec[2:]
-    elif spec.startswith("."):
-        test_dir = Path(test_path).parent
-        base = (test_dir / spec).resolve()
+    project_root = get_project_root()
+    importer = Path(test_path)
+    if not importer.is_absolute():
+        importer = project_root / importer
+    if spec.startswith("."):
+        bases = [(importer.parent / spec).resolve()]
     else:
-        return None
+        config_root = find_tsconfig_root(importer.parent, project_root)
+        if any(
+            (config_root / name).is_file()
+            for name in ("tsconfig.json", "tsconfig.app.json", "jsconfig.json")
+        ):
+            base = resolve_alias(spec, load_tsconfig_paths(config_root), config_root)
+        elif spec.startswith(("@/", "~/")):
+            # Preserve the legacy source-root convention for projects without config.
+            base = get_src_path() / spec[2:]
+        else:
+            base = None
+        bases = [] if base is None else [base]
+        # A linked workspace package may still resolve through node_modules
+        # exports — after the alias target, mirroring TypeScript's own order.
+        pkg = resolve_package_specifier(spec, importer.parent, project_root)
+        if pkg is not None and pkg not in bases:
+            bases.append(pkg)
+        if not bases:
+            return None
 
-    for ext in _TS_EXTENSIONS:
-        candidate = str(Path(str(base) + ext))
-        if candidate in production_files:
-            return candidate
-        rel_candidate = _relative_if_under_root(candidate)
-        if rel_candidate in production_files:
-            return rel_candidate
-        try:
-            resolved = str(Path(str(base) + ext).resolve())
-            if resolved in production_files:
-                return resolved
-            rel_resolved = _relative_if_under_root(resolved)
-            if rel_resolved in production_files:
-                return rel_resolved
-        except OSError as exc:
-            log_best_effort_failure(
-                logger,
-                f"resolve TypeScript import specifier {spec} from {test_path}",
-                exc,
-            )
+    for base in bases:
+        for candidate_path in iter_resolve_candidates(base):
+            candidate = str(candidate_path)
+            if candidate in production_files:
+                return candidate
+            rel_candidate = _relative_if_under_root(candidate)
+            if rel_candidate in production_files:
+                return rel_candidate
+            try:
+                resolved = str(candidate_path.resolve())
+                if resolved in production_files:
+                    return resolved
+                rel_resolved = _relative_if_under_root(resolved)
+                if rel_resolved in production_files:
+                    return rel_resolved
+            except OSError as exc:
+                log_best_effort_failure(
+                    logger,
+                    f"resolve TypeScript import specifier {spec} from {test_path}",
+                    exc,
+                )
     return None
 
 
@@ -287,9 +316,7 @@ def _normalize_tautology_token(token: str) -> str | None:
     return None
 
 
-def is_placeholder_test(
-    content: str, *, assertions: int, test_functions: int
-) -> bool:
+def is_placeholder_test(content: str, *, assertions: int, test_functions: int) -> bool:
     """Heuristic for synthetic coverage-smoke tests with tautological assertions."""
     if assertions <= 0 or test_functions <= 0:
         return False
@@ -312,7 +339,9 @@ def is_placeholder_test(
 
     has_placeholder_label = any(p.search(content) for p in PLACEHOLDER_LABEL_PATTERNS)
     if tautological > 0:
-        if tautological >= assertions and (has_placeholder_label or assertions <= test_functions):
+        if tautological >= assertions and (
+            has_placeholder_label or assertions <= test_functions
+        ):
             return True
         if has_placeholder_label and (tautological / max(assertions, 1)) >= 0.5:
             return True

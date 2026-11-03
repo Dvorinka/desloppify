@@ -448,3 +448,22 @@ def test_pr_body_state_load_failure(monkeypatch, capsys) -> None:
     out = capsys.readouterr().out
     assert "## Code Health Improvements" in out
     assert "x::1" in out
+
+
+def test_unambiguous_cluster_name_attribution() -> None:
+    """#827: single-cluster records carry cluster_name; ambiguous stay null."""
+    from desloppify.app.commands.plan.commit_log.dispatch import (
+        _unambiguous_cluster_name,
+    )
+
+    plan = {
+        "clusters": {
+            "dead-code": {"issue_ids": ["a", "b"]},
+            "naming": {"issue_ids": ["c"]},
+        }
+    }
+    assert _unambiguous_cluster_name(plan, ["a", "b"]) == "dead-code"
+    assert _unambiguous_cluster_name(plan, ["a"]) == "dead-code"
+    assert _unambiguous_cluster_name(plan, ["a", "c"]) is None
+    assert _unambiguous_cluster_name(plan, ["zzz"]) is None
+    assert _unambiguous_cluster_name({"clusters": {}}, ["a"]) is None

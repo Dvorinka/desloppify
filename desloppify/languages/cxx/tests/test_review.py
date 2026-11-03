@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import time
 
 import desloppify.languages.cxx.review as cxx_review_mod
 
@@ -53,3 +54,14 @@ static int helper() { return 1; }
 
     assert surface["public_types"] == ["Widget"]
     assert surface["public_functions"] == ["BuildWidget", "Run"]
+
+
+def test_function_detection_bounds_qualified_name_backtracking():
+    content = "::".join(["Type"] * 21) + " value = source;"
+
+    started = time.perf_counter()
+    patterns = cxx_review_mod.module_patterns(content)
+    elapsed = time.perf_counter() - started
+
+    assert patterns == []
+    assert elapsed < 0.25

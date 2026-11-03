@@ -1,0 +1,125 @@
+name: desloppify
+description: >-
+  Scan a PR's base..head diff, emit mechanical annotations on changed lines,
+  and report the strict-score delta. No LLM — findings only.
+author: Dvorinka
+branding:
+  icon: check-circle
+  color: green
+
+inputs:
+  path:
+    description: "Project path to scan (single coherent project)"
+    required: false
+    default: "."
+  lang:
+    description: "Force a language (e.g. typescript, python). Auto-detected when empty."
+    required: false
+    default: ""
+  base:
+    description: "Base ref for the diff (default: the PR base or origin/main)"
+    required: false
+    default: ""
+  install-ref:
+    description: "Git ref of Dvorinka/desloppify to install"
+    required: false
+    default: "main"
+  comment:
+    description: "Post a PR comment with the diff-review summary (requires pull-requests: write)"
+    required: false
+    default: "true"
+  fail-on-regression:
+    description: "Fail the check when the strict score drops more than this many points (e.g. 0.5). Empty: never gate."
+    required: false
+    default: ""
+
+outputs:
+  strict_before:
+    description: "Strict score before this run's baseline state"
+    value: ${{ steps.annotate.outputs.strict_before }}
+  strict_after:
+    description: "Strict score after this run"
+    value: ${{ steps.annotate.outputs.strict_after }}
+  annotation_count:
+    description: "Number of findings on changed lines"
+    value: ${{ steps.annotate.outputs.annotation_count }}
+
+runs:
+  using: composite
+  steps:
+    - name: Install desloppify
+      shell: bash
+      run: pip install --quiet "desloppify[full] @ git+https://github.com/Dvorinka/desloppify@${{ inputs.install-ref }}"
+
+    - name: Resolve base ref
+      id: base
+      shell: bash
+      run: |
+        base="${{ inputs.base }}"
+        if [ -z "$base" ]; then
+          base="${{ github.event.pull_request.base.sha }}"
+        fi
+        if [ -z "$base" ]; then
+          base="origin/${{ github.event.repository.default_branch }}"
+        fi
+        echo "ref=$base" >> "$GITHUB_OUTPUT"
+        git fetch --no-tags --depth=1 origin "$base" || true
+
+    - name: Scan + annotate diff
+      id: annotate
+      shell: bash
+      run: |
+        lang_args=()
+        if [ -n "${{ inputs.lang }}" ]; then
+          lang_args=(--lang "${{ inputs.lang }}")
+        fi
+        gate_args=()
+        if [ -n "${{ inputs.fail-on-regression }}" ]; then
+          gate_args=(--max-regression "${{ inputs.fail-on-regression }}")
+        fi
+        desloppify "${lang_args[@]}" scan --path "${{ inputs.path }}" \
+          --profile ci --no-badge \
+          --diff "${{ steps.base.outputs.ref }}" \
+          --annotations-json annotations.json \
+          "${gate_args[@]}"
+        python3 - <<'PY' >> "$GITHUB_OUTPUT"
+        import json
+        p = json.load(open("annotations.json"))
+        print(f"strict_before={p['strict_before']}")
+        print(f"strict_after={p['strict_after']}")
+        print(f"annotation_count={len(p['annotations'])}")
+        PY
+
+    - name: Comment on PR
+      if: inputs.comment == 'true' && github.event_name == 'pull_request'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        python3 - <<'PY' > /tmp/desloppify-comment.md
+        import json
+        p = json.load(open("annotations.json"))
+        n = len(p["annotations"])
+        delta = p["strict_delta"]
+        lines = [f"## desloppify diff review (`{p['base']}...HEAD`)", ""]
+        if delta is not None:
+            sign = "+" if delta >= 0 else ""
+            lines.append(
+                f"Strict score: **{p['strict_before']} -> {p['strict_after']}** ({sign}{delta})"
+            )
+        lines.append(f"Findings on changed lines: **{n}**")
+        lines.append("")
+        for a in p["annotations"][:50]:
+            loc = f"{a['file']}:{a['line']}" if a.get("line") else a["file"]
+            label = a.get("check") or a.get("detector") or "finding"
+            lines.append(f"- `{loc}` [{label}] {a.get('summary')}")
+        if n > 50:
+            lines.append(f"- … and {n - 50} more (see workflow log)")
+        print("\n".join(lines))
+        PY
+        gh pr comment "${{ github.event.pull_request.number }}" \
+          --repo "${{ github.repository }}" \
+          --body-file /tmp/desloppify-comment.md \
+          --edit-last || gh pr comment "${{ github.event.pull_request.number }}" \
+          --repo "${{ github.repository }}" \
+          --body-file /tmp/desloppify-comment.md
