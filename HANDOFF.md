@@ -586,6 +586,18 @@ Committed on maint/continuation:
   boilerplate None fixture gained detector_coverage and pins the #821
   reduced-coverage record. Suite: 6453 passed; only the two known
   dry-run env failures remain. Ruff clean on all changed test files.
+- Fork CI made green-ish for the first time in repo history (0 success
+  runs before this session): (1) mypy union-attr guard on the locked-plan
+  load in scan/workflow.py:627 (state_path is Path | None); (2) make
+  tests/tests-full now pip-install ".[treesitter]" — the CI env never
+  had the language pack, so tree-sitter-backed bash/lua/go/JS tests
+  always failed; (3) bandit-missing fixture also patches
+  importlib.util.find_spec — the #762 port's importable-bandit fallback
+  made the [full] CI env look bandit-present, failing the fixture on
+  tests-full only. Final CI on bd66ec50: lint/typecheck/arch/
+  ci-contracts/package-smoke all pass; tests-core + tests-full report
+  7718 passed with ONLY the two known dry-run env failures (run-level
+  failure is that sanctioned env class).
 
 ## Then: Dvorinka/cloudreve — DONE (2026-11-02)
 - #412 closed: vulns superseded — backend 4.23.7, Go 1.26.5
