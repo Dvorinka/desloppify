@@ -548,6 +548,31 @@ Committed on maint/continuation:
   MINING COMPLETE with the five hashes. Next: fresh upstream sweep
   (issues post-#852 adjudication), then the three-repo open-PR check.
 
+## Session 2026-11-03 (XV cont.) — fresh upstream sweep: 4 unadjudicated rows found
+- Upstream open maxima unchanged: issues #944, PRs #939 — nothing newer than
+  the last adjudicated sweep. But re-checking every OPEN issue number against
+  PORTS.md found four with no ledger row (pre-#852 strays): #745 #747 #839 #843.
+- #745 (recover codex stdout on nonzero exit) SKIP — external-runner plumbing
+  by the ledger's own convention; the exit-0 recovery path is present.
+- #747 (strategy:: resolve leaves issue open) DONE — covered by the #879 port;
+  test_created_strategies_persist_resolution pins state-fixed + plan purge.
+- #839 (TS cyclomatic counts nested callback branches against the enclosing
+  function) FIXED in fork: _strip_nested_function_bodies in
+  typescript/detectors/smells/detector_core.py blanks nested function/arrow
+  bodies (string/comment-safe, brace-matched) before counting; branch owners
+  stay local; nested functions still assessed separately (16-branch callback
+  flags on the callback itself). Regression tests:
+  tests/lang/typescript/test_ts_cyclomatic_nested_functions.py (3).
+- #843 (python unused_enums flags enums used in their defining module) FIXED
+  in fork: Load-context local uses outside the enum ClassDef span keep the
+  enum alive (annotations count as consumers); self-references inside the
+  enum body don't. Regression tests in test_py_unused_enums_direct.py
+  (renamed test_locally_used_enum_not_reported from the old self-use pin,
+  updated to the #843 contract; + annotation case).
+- Both fixes: issue-repro verified, suites
+  tests/lang/{typescript,python} + tests/detectors green (1085 passed).
+  unused_enums.py I001 ruff noise is pre-existing (verified via git stash).
+
 ## Then: Dvorinka/cloudreve — DONE (2026-11-02)
 - #412 closed: vulns superseded — backend 4.23.7, Go 1.26.5
   (go-version-file), alpine:latest runtime base.

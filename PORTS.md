@@ -22,6 +22,7 @@ against fork HEAD `3a7735d` (v1.0). Verdicts:
 | #941 jscpd dies on EBADDEVENGINES in pnpm workspaces | DONE | jscpd runs with cwd=neutral output tmpdir; scan path passed absolute; report-name resolution tolerant to scan-relative paths |
 | #940 Lua unused_import flags string literals + suppress ::* | DONE | LUA_SPEC import_query constrained to require(); matcher retries :: globs with ::* tail |
 | #936 coverage scan log labels denominator wrong | SKIP | log cosmetics |
+| #843 Python unused_enums flags enums used in their defining module | DONE | local Load uses outside the enum span keep it alive (incl. annotations); self-references inside the enum body don't count. Repro + 3 regression tests in test_py_unused_enums_direct.py |
 | #934 review defaults to missing src when scan_path null | DONE | get_default_scan_path falls back to root (fix g) |
 | #933 TS coverage/dep resolvers miss workspace exports | DONE | resolvers follow workspace exports (2b7120d1) |
 | #932 next recommends dead-useeffect autofix for README finding | SKIP | nudge wording |
@@ -71,6 +72,7 @@ against fork HEAD `3a7735d` (v1.0). Verdicts:
 | #845 observe triage: holistic issues can't be cited by hash | DONE | 23098f74 |
 | #842 RequestInit credentials flagged as secret | DONE (class) | value-based gate (fix b) — `credentials: "include"` has no secret value |
 | #838 TS props detector counts union alternatives | DONE | member-line counting (60c61251) |
+| #839 TS cyclomatic counts nested callback branches vs enclosing fn | DONE | _strip_nested_function_bodies blanks nested function/arrow bodies before counting; complex callbacks still flagged on themselves; 3 regression tests in test_ts_cyclomatic_nested_functions.py |
 | #832 next/plan ignore plan dir implied by --state | DONE | already fixed — cli.py sets runtime.plan_file=plan_path_for_state(--state); load_plan resolves through it; regression test added |
 | #831 TS unused ignores tsconfig.json | DONE | nearest-tsconfig walk (ported #713, 99e0c2a3) |
 | #830 partial trusted review import resolves outside dimension | DONE | 4dc9839b — payload dims bounded to packet's declared scope (allowed_dimensions) |
@@ -107,6 +109,8 @@ against fork HEAD `3a7735d` (v1.0). Verdicts:
 | #755 Codex ENRICH nested subagents | SKIP | runner prompt |
 | #754 triage ORGANIZE contradicts requirements | DONE | contradiction already gone (#888 consolidated steps accepted; requirements text updated); organize refusals now raise CommandError exit 1 |
 | #748 relative exclusions → Bandit keeps out-of-scope | DONE | same fix family as #916 |
+| #747 strategy resolve leaves issue state open | DONE | covered by #879 port — test_created_strategies_persist_resolution asserts strategy:: items go fixed in state and leave the plan queue |
+| #745 Recover valid Codex stdout when output artifact incomplete | SKIP | external-runner (codex) plumbing, per ledger convention |
 | #746 Python src-layout imports orphaned at root scan | DONE | src/ resolution root |
 | #728 bandit not registered under [full] extras | DONE | module-importable bandit check (ported #762) |
 | #727 auto-detect cxx over csharp via ignores | DONE | exclusion-aware fallback count + sln/slnx/csproj/fsproj/Directory.Packages.props markers |

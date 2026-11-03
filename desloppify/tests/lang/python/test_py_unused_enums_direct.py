@@ -60,8 +60,8 @@ class TestDetectUnusedEnums:
         })
         assert len(entries) == 0
 
-    def test_self_usage_not_counted_as_external(self, tmp_path: Path):
-        """Enum referenced in its own file doesn't count as externally imported."""
+    def test_locally_used_enum_not_reported(self, tmp_path: Path):
+        """An enum referenced in its defining module is live (#843)."""
         entries, _ = _run(tmp_path, {
             "enums.py": (
                 "from enum import StrEnum\n"
@@ -70,7 +70,20 @@ class TestDetectUnusedEnums:
                 "x = Status.ACTIVE\n"
             ),
         })
-        assert len(entries) == 1
+        assert len(entries) == 0
+
+    def test_locally_annotated_enum_not_reported(self, tmp_path: Path):
+        """Annotation/type references count as local consumers (#843)."""
+        entries, _ = _run(tmp_path, {
+            "enums.py": (
+                "from enum import Enum\n"
+                "class Mode(Enum):\n"
+                "    FAST = 1\n"
+                "def build(mode: Mode) -> str:\n"
+                '    return "x"\n'
+            ),
+        })
+        assert len(entries) == 0
 
     def test_multiple_enums_reports_only_unused(self, tmp_path: Path):
         entries, _ = _run(tmp_path, {

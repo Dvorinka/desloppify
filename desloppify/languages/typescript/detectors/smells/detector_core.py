@@ -181,9 +181,82 @@ def _count_pattern_in_body(body: str, pattern: re.Pattern[str]) -> int:
     return len(pattern.findall(_code_text(body)))
 
 
+def _matching_brace(code: str, open_index: int) -> int | None:
+    """Closing-brace index for the '{' at open_index, on string-blanked code."""
+    depth = 0
+    for index in range(open_index, len(code)):
+        character = code[index]
+        if character == "{":
+            depth += 1
+        elif character == "}":
+            depth -= 1
+            if depth == 0:
+                return index
+    return None
+
+
+def _first_body_brace(code: str, start: int) -> int | None:
+    """Function-body '{' after a ``function`` keyword; None when not a head."""
+    paren_depth = 0
+    bracket_depth = 0
+    for index in range(start, len(code)):
+        character = code[index]
+        if character == "(":
+            paren_depth += 1
+        elif character == ")" and paren_depth > 0:
+            paren_depth -= 1
+        elif character == "[":
+            if paren_depth == 0:
+                return None
+            bracket_depth += 1
+        elif character == "]" and bracket_depth > 0:
+            bracket_depth -= 1
+        elif character == "{":
+            if paren_depth == 0:
+                return None
+        elif character in "=;" and paren_depth == 0:
+            return None
+    return None
+
+
+def _arrow_body_open(code: str, start: int) -> int | None:
+    """Opening-brace index when an arrow is block-bodied, else None."""
+    index = start
+    while index < len(code) and code[index].isspace():
+        index += 1
+    if index < len(code) and code[index] == "{":
+        return index
+    return None
+
+
+def _strip_nested_function_bodies(stripped: str) -> str:
+    """Blank nested function bodies so branch counts stay locally owned."""
+    code = _code_text(stripped)
+    spans = []
+    for match in re.finditer(r"\bfunction\b|=>", code):
+        if match.group() == "=>":
+            body_open = _arrow_body_open(code, match.end())
+        else:
+            body_open = _first_body_brace(code, match.end())
+        if body_open is None:
+            continue
+        body_close = _matching_brace(code, body_open)
+        if body_close is None:
+            continue
+        spans.append((body_open, body_close))
+    if not spans:
+        return stripped
+    out = list(code)
+    for body_open, body_close in sorted(spans, reverse=True):
+        for index in range(body_open + 1, body_close):
+            if out[index] != "\n":
+                out[index] = " "
+    return "".join(out)
+
+
 def _compute_ts_cyclomatic_complexity(body: str) -> int:
     """Compute cyclomatic complexity for a TypeScript function body string."""
-    stripped = _strip_ts_comments(body)
+    stripped = _strip_nested_function_bodies(_strip_ts_comments(body))
     complexity = 1
     for pattern in _TS_BRANCH_PATTERNS:
         complexity += len(pattern.findall(stripped))
