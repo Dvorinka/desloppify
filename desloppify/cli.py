@@ -115,12 +115,12 @@ def _project_root_from_state_path(state_path_value: str | Path | None) -> Path |
         state_file = Path(state_path_value).resolve()
     except OSError:
         return None
-    if state_file.parent.name != ".desloppify":
-        return None
     if state_file.name == "state.json" or (
         state_file.name.startswith("state-") and state_file.suffix == ".json"
     ):
-        return state_file.parent.parent
+        for parent in state_file.parents:
+            if parent.name == ".desloppify":
+                return parent.parent
     return None
 
 
