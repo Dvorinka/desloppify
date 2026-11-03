@@ -107,6 +107,43 @@ Upstream issue/PR triage lives in [PORTS.md](PORTS.md).
   unseen content (phantom reads), conditional/branch writes (sequential
   overwrite claims now require two unconditional writes), or dicts moved
   through for-iter container aliases (upstream #801, #846).
+- Review freshness + queue-tracking family (upstream PRs #881, #877, #850,
+  #848, #870, #835/#836, #837, #840, #841, #857, #852, #851, #879; issues
+  #832, #830, #826, #825, #823, #821, #815, #813, #809, #805, #785, #779,
+  #759, #754, #908): canonical false-positive-only skip freshness with the
+  raw merge saved under `state_lock` before reconciliation; a reduced
+  jscpd run lowers coverage instead of silently keeping full weight;
+  per-language `--state` files isolated plan queues (`plan_path_for_state`);
+  partial trusted imports bounded by packet-declared dimensions;
+  `review --prepare` refreshes the blind packet; `show --blind` suppresses
+  the plan/score footers; triage helper bakes `--lang`/`--state` into the
+  script; scan history scores are rewritten in-lock so output, history,
+  and disk agree; organize refusals exit 1; strategy items resolve through
+  the canonical state path and survive force-rescan (upstream #900/#888
+  family: `strategy::` ids execute through `next`, phase markers split
+  from persisted work, execution logs separate operations from issue ids).
+- Detector/resolver family (upstream PRs #938, #935, #937, #925/#924,
+  #920, #914, #926, #911, #874, #910, #901; issues #927, #933, #831, #838,
+  #811, #810, #824, #854, #887, #709, #727, #700, #863): detector-evidence
+  gates for manual scan verification, packet-scoped trusted-review
+  coverage, tsconfig-alias resolution per importer, JS/CJS import edges,
+  git-ignored paths dropped from findings, Next.js nested-package
+  entrypoints, generic autofix per-file protocol, golangci v2 flag
+  detection, Swift `Tests/` zone rules, jscpd run from a neutral cwd.
+- Upstream meta-PR #744 fully mined: ports from it include the cxx regex
+  atomic groups (#729/#733), bandit discovered-file batches (#695),
+  schema-correction contexts (#694), pure-forwarding AST shapes (#693),
+  versioned-migration constants (#691), compat import entry points (#690),
+  constant-return CLI main (#688), callable-default None providers (#687),
+  open dict-copy keysets (#673), reflect display names (#685),
+  Razor/Blazor dep-graph links (#682), React Router/Remix route modules
+  (#697), tested-header same-stem mapping (#732).
+- TypeScript cyclomatic complexity no longer charges nested function and
+  arrow bodies to the enclosing function; complex callbacks are still
+  flagged on themselves (upstream #839).
+- Python `unused_enums` treats same-module value and annotation uses as
+  live consumers; self-references inside the enum body do not count
+  (upstream #843).
 
 ### Changed
 
