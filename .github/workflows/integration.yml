@@ -15,7 +15,7 @@ concurrency:
 jobs:
   roslyn-integration:
     name: roslyn-integration
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64]
     env:
       DESLOPPIFY_TEST_CSHARP_ROSLYN_CMD: "python .github/scripts/roslyn_stub.py"
     steps:
